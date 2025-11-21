@@ -7,8 +7,10 @@ import re
 # -----------------------------------------
 # Streamlit Page Settings
 # -----------------------------------------
+# Page configuration
 st.set_page_config(
-    page_title="بَيِّنْ",
+    page_title="بَيِّنْ - مصنف قراءة النصوص العربية",
+    page_icon="📖",
     layout="centered"
 )
 
@@ -44,16 +46,29 @@ tokenizer, model = load_model()
 # -----------------------------------------
 # UI Layout
 # -----------------------------------------
-st.title("بَيِّنْ")
 st.markdown("""
-### تصنيف النصوص العربية حسب المستوى التعليمي 
-""")
-text = st.text_area(
-    ": أدخل النص هنا",
-    height=200,
-    placeholder="اكتب هنا النص المراد تقييم سهولة قراءته..."
-)
+    <h1 style='text-align: center; direction: rtl;'>بَيِّنْ</h1>
+    <h3 style='text-align: center; direction: rtl;'>مصنف مستوى قراءة النصوص العربية</h3>
+""", unsafe_allow_html=True)
 
+st.markdown("---")
+
+text = st.text_area(
+    label="",
+    height=200,
+    placeholder="اكتب أو الصق النص هنا...",
+    key="arabic_input"
+)
+# Add RTL styling for the text area
+st.markdown("""
+    <style>
+    textarea {
+        direction: rtl;
+        text-align: right;
+        font-size: 16px;
+    }
+    </style>
+""", unsafe_allow_html=True)
 # -----------------------------------------
 # Prediction
 # -----------------------------------------
@@ -88,6 +103,7 @@ if st.button("🔍 تصنيف النص", use_container_width=True):
 
 # Footer
 st.caption("© 2025 — مشروع بَيِّنْ ")
+
 
 
 
