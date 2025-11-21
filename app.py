@@ -34,9 +34,10 @@ def normalize_ar(text):
 # -----------------------------------------
 @st.cache_resource
 def load_model():
-    model_path = "SarahAlhalees/Arabertv2_D3Tok/Arabertv2_D3Tok"  # folder containing your 6-level model
-    tokenizer = AutoTokenizer.from_pretrained(model_path)
-    model = AutoModelForSequenceClassification.from_pretrained(model_path)
+    repo_id = "SarahAlhalees/Arabertv2_D3Tok"  # Just username/repo_name
+    subfolder = "Arabertv2_D3Tok"  # The folder inside the repo
+    tokenizer = AutoTokenizer.from_pretrained(repo_id, subfolder=subfolder)
+    model = AutoModelForSequenceClassification.from_pretrained(repo_id, subfolder=subfolder)
     return tokenizer, model
 
 tokenizer, model = load_model()
@@ -90,5 +91,6 @@ if st.button("🔍 تصنيف النص", use_container_width=True):
 
 # Footer
 st.caption("© 2025 — مشروع بَيِّنْ ")
+
 
 
