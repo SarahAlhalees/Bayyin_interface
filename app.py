@@ -69,13 +69,14 @@ st.markdown("""
     }
     .token-box {
         display: inline-block;
-        background-color: #e3f2fd;
-        border: 1px solid #90caf9;
+        background-color: #374151;
+        border: 1px solid #4b5563;
         border-radius: 4px;
         padding: 4px 8px;
         margin: 2px;
         font-family: monospace;
         direction: rtl;
+        color: #f9fafb;
     }
     .rtl-text {
         direction: rtl;
@@ -83,6 +84,7 @@ st.markdown("""
     }
     </style>
 """, unsafe_allow_html=True)
+
 
 # -----------------------------------------
 # Prediction
@@ -177,4 +179,5 @@ if st.button("🔍 تصنيف النص", use_container_width=True):
 # Footer
 st.markdown("---")
 st.caption("© 2025 — مشروع بَيِّنْ")
+
 
