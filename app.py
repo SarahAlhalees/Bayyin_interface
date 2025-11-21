@@ -34,7 +34,7 @@ def normalize_ar(text):
 # -----------------------------------------
 @st.cache_resource
 def load_model():
-    model_path = "SarahAlhalees/Arabertv2_D3Tok"  # folder containing your 6-level model
+    model_path = "SarahAlhalees/Arabertv2_D3Tok\Arabertv2_D3Tok"  # folder containing your 6-level model
     tokenizer = AutoTokenizer.from_pretrained(model_path)
     model = AutoModelForSequenceClassification.from_pretrained(model_path)
     return tokenizer, model
@@ -90,3 +90,4 @@ if st.button("🔍 تصنيف النص", use_container_width=True):
 
 # Footer
 st.caption("© 2025 — مشروع بَيِّنْ ")
+
