@@ -134,7 +134,7 @@ if st.button("🔍 تصنيف النص", use_container_width=True):
         # Tokenization Section
         # -----------------------------------------
         st.markdown("---")
-        st.subheader("🔤 تحليل التوكنات (Tokenization)")
+        st.subheader("(Tokenization)")
         
         # Get tokens
         token_ids = inputs["input_ids"][0].tolist()
@@ -144,15 +144,7 @@ if st.button("🔍 تصنيف النص", use_container_width=True):
         special_tokens = [tokenizer.cls_token, tokenizer.sep_token, tokenizer.pad_token]
         display_tokens = [(tok, tid) for tok, tid in zip(tokens, token_ids) if tok not in special_tokens]
         
-        # Token statistics
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric("عدد التوكنات", len(display_tokens))
-        with col2:
-            st.metric("عدد التوكنات (مع الخاصة)", len(tokens))
-        with col3:
-            word_count = len(cleaned.split())
-            st.metric("عدد الكلمات", word_count)
+
         
         # Display tokens visually
         st.write("**التوكنات:**")
@@ -185,3 +177,4 @@ if st.button("🔍 تصنيف النص", use_container_width=True):
 # Footer
 st.markdown("---")
 st.caption("© 2025 — مشروع بَيِّنْ")
+
