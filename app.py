@@ -111,6 +111,8 @@ st.markdown("""
         box-shadow: 0 10px 20px rgba(0,0,0,0.3);
         border: 2px solid #fff;
     }
+    
+    /* --- UPDATED MODEL CARD CSS (FIXES SIZE) --- */
     .model-card {
         border-radius: 15px;
         padding: 15px;
@@ -118,14 +120,15 @@ st.markdown("""
         color: white;
         box-shadow: 0 4px 8px rgba(0,0,0,0.1);
         
-        /* --- NEW LINES TO FIX SIZE --- */
-        min-height: 180px;  /* Forces all boxes to be at least this tall */
-        display: flex;      /* Enables flexible layout */
-        flex-direction: column; /* Stacks items vertically */
-        justify-content: center; /* Centers items vertically */
-        align-items: center;     /* Centers items horizontally */
+        /* Flexbox centering and Min-Height */
+        min-height: 180px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
     }
-    .model-card-orig { background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%); color: white; }
+    
+    .model-card-orig { background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%); color: #333; }
     .model-card-mix { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; }
     .model-card-msa { background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; }
     
@@ -135,7 +138,7 @@ st.markdown("""
         border-radius: 25px;
         font-size: 1.2em;
         font-weight: bold;
-        margin: 5px 0;
+        margin: 10px 0;
     }
     .level-1, .level-2 { background: #2ecc71; color: white; }
     .level-3, .level-4 { background: #f39c12; color: white; }
@@ -222,12 +225,12 @@ if st.button("تصنيف النص", use_container_width=True):
             # Columns for individual models
             c1, c2, c3 = st.columns(3)
 
-            # Helper to display card (Modified: Removed Confidence)
+            # Helper to display card (Removed Confidence, Fixed Size via CSS)
             def display_mini_card(column, title, level, css_class):
                 with column:
                     if level:
                         st.markdown(f"""
-                        <div class='model-card {css_class}' style='text-align: center;'>
+                        <div class='model-card {css_class}'>
                             <h4 style='margin-bottom:5px;'>{title}</h4>
                             <div class='level-badge level-{level}'>المستوى {level}</div>
                             <p style='margin-top:5px; font-weight:bold;'>{level_names.get(level)}</p>
@@ -241,4 +244,3 @@ if st.button("تصنيف النص", use_container_width=True):
 # Footer
 st.markdown("---")
 st.markdown("<p style='text-align: center; color: #667eea;'>© 2025 — مشروع بَيِّنْ</p>", unsafe_allow_html=True)
-
