@@ -4,6 +4,7 @@ import torch
 import numpy as np
 import re
 from collections import Counter
+from huggingface_hub import hf_hub_download
 
 # -----------------------------------------
 # Streamlit Page Settings
@@ -30,6 +31,25 @@ def normalize_ar(text):
     text = re.sub(r"\s+", " ", text).strip()
     return text
 
+# -----------------------------------------
+# GNN Model Architecture 
+# -----------------------------------------
+# You MUST paste the exact class structure used to train the model here.
+# This is a placeholder example.
+class ArabicGNNModel(nn.Module):
+    def __init__(self, input_dim=768, hidden_dim=256, num_classes=6):
+        super(ArabicGNNModel, self).__init__()
+        # Example structure - replace with your actual GNN layers
+        self.fc1 = nn.Linear(input_dim, hidden_dim)
+        self.relu = nn.ReLU()
+        self.fc2 = nn.Linear(hidden_dim, num_classes)
+    
+    def forward(self, x):
+        # Update this forward pass to match your model
+        out = self.fc1(x)
+        out = self.relu(out)
+        logits = self.fc2(out)
+        return logits
 # -----------------------------------------
 # Load Models
 # -----------------------------------------
@@ -70,6 +90,31 @@ def load_models():
     
     return models
 
+    # --- Model 3: GNN Model (.pt file) ---
+    try:
+        # TODO: Replace with your actual Hugging Face Repo ID and filename
+        gnn_repo_id = "SarahAlhalees/GNN" 
+        gnn_filename = "best_gnn_AraBERTEmbeddings (1).pt"
+        
+        # Download the .pt file
+        model_path = hf_hub_download(repo_id=gnn_repo_id, filename=gnn_filename)
+        
+        # Initialize the architecture (Must match training parameters)
+        # Assuming the GNN takes BERT embeddings, input_dim is usually 768
+        gnn_model = ArabicGNNModel(input_dim=768, num_classes=6) 
+        
+        # Load weights
+        gnn_model.load_state_dict(torch.load(model_path, map_location=torch.device('cpu')))
+        gnn_model.eval() # Set to evaluation mode
+        
+        models['gnn_model'] = gnn_model
+    except Exception as e:
+        # We don't block the app if GNN fails, just log it
+        print(f"GNN Load Error: {e}") 
+        models['gnn_model'] = None
+    
+    return models
+
 models_dict = load_models()
 orig_tokenizer = models_dict.get('orig_tokenizer')
 orig_model = models_dict.get('orig_model')
@@ -77,66 +122,43 @@ mix_tokenizer = models_dict.get('mix_tokenizer')
 mix_model = models_dict.get('mix_model')
 msa_tokenizer = models_dict.get('msa_tokenizer')
 msa_model = models_dict.get('msa_model')
-
+gnn_model = models_dict.get('gnn_model')
 # -----------------------------------------
 # UI Layout with Colorful Styling
 # -----------------------------------------
 st.markdown("""
     <style>
-    textarea {
-        direction: rtl;
-        text-align: right;
-        font-size: 16px;
-    }
-    .rtl-text {
-        direction: rtl;
-        text-align: right;
-    }
+    textarea { direction: rtl; text-align: right; font-size: 16px; }
+    .rtl-text { direction: rtl; text-align: right; }
     .gradient-title {
         background: linear-gradient(120deg, #667eea 0%, #764ba2 100%);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
-        background-clip: text;
-        font-size: 3em;
-        font-weight: bold;
-        text-align: center;
+        font-size: 3em; font-weight: bold; text-align: center;
     }
     .final-verdict-card {
         background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
-        border-radius: 15px;
-        padding: 25px;
-        margin: 20px 0;
-        color: white;
-        text-align: center;
-        box-shadow: 0 10px 20px rgba(0,0,0,0.3);
-        border: 2px solid #fff;
+        border-radius: 15px; padding: 25px; margin: 20px 0;
+        color: white; text-align: center;
+        box-shadow: 0 10px 20px rgba(0,0,0,0.3); border: 2px solid #fff;
     }
     
     /* --- FIXED MODEL CARD CSS --- */
     .model-card {
-        border-radius: 15px;
-        padding: 15px;
-        margin: 10px 0;
-        color: white;
-        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-        height: 220px; /* Fixed height for consistency */
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        align-items: center;
+        border-radius: 15px; padding: 15px; margin: 5px;
+        color: white; box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        height: 220px; display: flex; flex-direction: column;
+        justify-content: center; align-items: center;
     }
     
-    .model-card-orig { background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%); color: white; }
+    .model-card-orig { background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%); color: #444; }
     .model-card-mix { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; }
     .model-card-msa { background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; }
+    .model-card-gnn { background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 99%, #fecfef 100%); color: #444; }
     
     .level-badge {
-        display: inline-block;
-        padding: 8px 20px;
-        border-radius: 25px;
-        font-size: 1.2em;
-        font-weight: bold;
-        margin: 10px 0;
+        display: inline-block; padding: 8px 20px; border-radius: 25px;
+        font-size: 1.2em; font-weight: bold; margin: 10px 0;
     }
     .level-1, .level-2 { background: #2ecc71; color: white; }
     .level-3, .level-4 { background: #f39c12; color: white; }
@@ -145,15 +167,12 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.markdown("<h1 class='gradient-title'>بَيِّنْ</h1>", unsafe_allow_html=True)
-st.markdown("<h3 style='text-align: center; direction: rtl; color: #667eea;'>مصنف مستوى قراءة النصوص العربية</h3>", unsafe_allow_html=True)
+st.markdown("<h3 style='text-align: center; direction: rtl; color: #667eea;'>مصنف مستوى قراءة النصوص العربية (بمساعدة GNN)</h3>", unsafe_allow_html=True)
 
 st.markdown("---")
 
 text = st.text_area(
-    label="",
-    height=200,
-    placeholder="اكتب أو الصق النص هنا...",
-    key="arabic_input"
+    label="", height=200, placeholder="اكتب أو الصق النص هنا...", key="arabic_input"
 )
 
 # -----------------------------------------
@@ -161,75 +180,90 @@ text = st.text_area(
 # -----------------------------------------
 if st.button("تصنيف النص", use_container_width=True):
     
-    # 1. Check if text is empty
     if not text.strip():
         st.error("الرجاء إدخال نص قبل الضغط على زر التصنيف.")
-    
-    # 2. Check if text contains Arabic characters
-    # Uses Regex to look for characters in the Arabic Unicode block
     elif not re.search(r'[\u0600-\u06ff]', text):
-        st.error("عذراً، النص المدخل لا يبدو أنه باللغة العربية. الرجاء إدخال نص عربي صحيح.")
-        
+        st.error("عذراً، النص المدخل لا يبدو أنه باللغة العربية.")
     else:
-        # If checks pass, proceed with model logic
-        if not any([orig_model, mix_model, msa_model]):
-            st.error("لم يتم تحميل أي نموذج.")
-        else:
-            cleaned = normalize_ar(text)
+        cleaned = normalize_ar(text)
+        
+        # Helper: Predict using Transformers
+        def predict_transformer(model, tokenizer, text_input):
+            if model and tokenizer:
+                try:
+                    inputs = tokenizer(text_input, return_tensors="pt", truncation=True, padding=True, max_length=256)
+                    with torch.no_grad():
+                        logits = model(**inputs).logits
+                    probs = torch.softmax(logits, dim=-1).numpy()[0]
+                    return np.argmax(probs) + 1
+                except Exception:
+                    return None
+            return None
+
+        # Helper: Predict using GNN
+        def predict_gnn(model, text_input):
+            if model and orig_tokenizer: # Assuming GNN uses embeddings from orig_tokenizer
+                try:
+                    # 1. Get Embeddings (GNNs usually need embeddings, not raw text)
+                    # This logic depends entirely on how your GNN was trained!
+                    inputs = orig_tokenizer(text_input, return_tensors="pt", truncation=True, padding=True, max_length=256)
+                    
+                    # We extract the CLS token embedding from the orig_model to pass to GNN
+                    # Or create a graph. Here we assume a simple vector input for demonstration.
+                    with torch.no_grad():
+                        bert_out = orig_model.bert(**inputs)
+                        # Use CLS token embedding (batch_size, hidden_dim)
+                        cls_embedding = bert_out.last_hidden_state[:, 0, :]
+                        
+                        # 2. Pass to GNN
+                        logits = model(cls_embedding) 
+                    
+                    probs = torch.softmax(logits, dim=-1).numpy()[0]
+                    return np.argmax(probs) + 1
+                except Exception as e:
+                    print(f"GNN Prediction Error: {e}")
+                    return None
+            return None
+
+        # Get predictions
+        orig_level = predict_transformer(orig_model, orig_tokenizer, cleaned)
+        mix_level = predict_transformer(mix_model, mix_tokenizer, cleaned)
+        msa_level = predict_transformer(msa_model, msa_tokenizer, cleaned)
+        # GNN Prediction
+        gnn_level = predict_gnn(gnn_model, cleaned)
+
+        # -----------------------------------------
+        # Hard Voting
+        # -----------------------------------------
+        predictions = [l for l in [orig_level, mix_level, msa_level, gnn_level] if l is not None]
+        
+        final_level = None
+        if predictions:
+            counts = Counter(predictions)
+            final_level = counts.most_common(1)[0][0]
+
+        # -----------------------------------------
+        # Results Display
+        # -----------------------------------------
+        level_names = {
+            1: "سهل جداً", 2: "سهل", 3: "متوسط", 
+            4: "صعب قليلاً", 5: "صعب", 6: "صعب جداً"
+        }
+
+        if final_level:
+            st.markdown("---")
+            st.markdown(f"""
+            <div class='final-verdict-card'>
+                <h2 style='margin:0;'>النتيجة النهائية</h2>
+                <h1 style='font-size: 3.5em; margin: 10px 0;'>المستوى {final_level}</h1>
+                <h3 style='opacity: 0.9;'>{level_names.get(final_level, '')}</h3>
+            </div>
+            """, unsafe_allow_html=True)
             
-            def predict_level(model, tokenizer, text_input):
-                if model and tokenizer:
-                    try:
-                        inputs = tokenizer(text_input, return_tensors="pt", truncation=True, padding=True, max_length=256)
-                        with torch.no_grad():
-                            logits = model(**inputs).logits
-                        probs = torch.softmax(logits, dim=-1).numpy()[0]
-                        pred_idx = np.argmax(probs)
-                        level = pred_idx + 1
-                        return level
-                    except Exception as e:
-                        return None
-                return None
+            st.markdown("<h4 style='text-align: right; direction: rtl; color: #555;'>تفاصيل النماذج:</h4>", unsafe_allow_html=True)
 
-            # Get predictions from all models
-            orig_level = predict_level(orig_model, orig_tokenizer, cleaned)
-            mix_level = predict_level(mix_model, mix_tokenizer, cleaned)
-            msa_level = predict_level(msa_model, msa_tokenizer, cleaned)
-
-            # -----------------------------------------
-            # Hard Voting Implementation
-            # -----------------------------------------
-            predictions = [l for l in [orig_level, mix_level, msa_level] if l is not None]
-            
-            final_level = None
-            if predictions:
-                # Find the most common element (Hard Voting)
-                counts = Counter(predictions)
-                final_level = counts.most_common(1)[0][0]
-
-            # -----------------------------------------
-            # Results Display
-            # -----------------------------------------
-            level_names = {
-                1: "سهل جداً", 2: "سهل", 3: "متوسط", 
-                4: "صعب قليلاً", 5: "صعب", 6: "صعب جداً"
-            }
-
-            if final_level:
-                st.markdown("---")
-                # Final Result (Hard Voting) Display
-                st.markdown(f"""
-                <div class='final-verdict-card'>
-                    <h2 style='margin:0;'>النتيجة النهائية</h2>
-                    <h1 style='font-size: 3.5em; margin: 10px 0;'>المستوى {final_level}</h1>
-                    <h3 style='opacity: 0.9;'>{level_names.get(final_level, '')}</h3>
-                </div>
-                """, unsafe_allow_html=True)
-                
-                st.markdown("<h4 style='text-align: right; direction: rtl; color: #555;'>تفاصيل النماذج:</h4>", unsafe_allow_html=True)
-
-            # Columns for individual models
-            c1, c2, c3 = st.columns(3)
+            # Updated to 4 columns
+            c1, c2, c3, c4 = st.columns(4)
 
             def display_mini_card(column, title, level, css_class):
                 with column:
@@ -241,10 +275,14 @@ if st.button("تصنيف النص", use_container_width=True):
                             <p style='margin-top:5px; font-weight:bold;'>{level_names.get(level)}</p>
                         </div>
                         """, unsafe_allow_html=True)
+                    else:
+                        with column:
+                             st.warning(f"نموذج {title} غير متاح")
 
             display_mini_card(c1, "Arabertv2", orig_level, "model-card-orig")
-            display_mini_card(c2, "CAMeLBERT Mix", mix_level, "model-card-mix")
-            display_mini_card(c3, "CAMeLBERT MSA", msa_level, "model-card-msa")
+            display_mini_card(c2, "CAMeL Mix", mix_level, "model-card-mix")
+            display_mini_card(c3, "CAMeL MSA", msa_level, "model-card-msa")
+            display_mini_card(c4, "GNN Model", gnn_level, "model-card-gnn")
 
 # Footer
 st.markdown("---")
