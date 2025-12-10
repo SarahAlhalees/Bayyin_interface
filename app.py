@@ -204,7 +204,7 @@ if st.button("تصنيف النص", use_container_width=True):
             # Original Model Results
             if orig_level is not None:
                 st.markdown("<div class='model-card model-card-orig'>", unsafe_allow_html=True)
-                st.markdown("<h3 style='text-align: right; margin: 0; color: #333;'>Arabertv2_D3Tok</h3>", unsafe_allow_html=True)
+                st.markdown("<h3 style='text-align: right; margin: 0; color: #333;'>Arabertv2</h3>", unsafe_allow_html=True)
                 
                 col1, col2 = st.columns(2)
                 with col1:
@@ -219,7 +219,7 @@ if st.button("تصنيف النص", use_container_width=True):
             # CAMeLBERTmix Model Results
             if mix_level is not None:
                 st.markdown("<div class='model-card model-card-mix'>", unsafe_allow_html=True)
-                st.markdown("<h3 style='text-align: right; margin: 0;'>CAMeLBERTmix</h3>", unsafe_allow_html=True)
+                st.markdown("<h3 style='text-align: right; margin: 0;'>CAMeLBERT-MIX</h3>", unsafe_allow_html=True)
                 
                 col3, col4 = st.columns(2)
                 with col3:
@@ -234,7 +234,7 @@ if st.button("تصنيف النص", use_container_width=True):
             # CAMeLBERTmsa Model Results
             if msa_level is not None:
                 st.markdown("<div class='model-card model-card-msa'>", unsafe_allow_html=True)
-                st.markdown("<h3 style='text-align: right; margin: 0;'>CAMeLBERTmsa</h3>", unsafe_allow_html=True)
+                st.markdown("<h3 style='text-align: right; margin: 0;'>CAMeLBERT-MSA</h3>", unsafe_allow_html=True)
                 
                 col5, col6 = st.columns(2)
                 with col5:
@@ -246,15 +246,11 @@ if st.button("تصنيف النص", use_container_width=True):
                 st.markdown(f"<p style='text-align: right;'><strong>نسبة الثقة:</strong> {msa_probs[msa_pred_idx]:.2%}</p>", unsafe_allow_html=True)
                 st.markdown("</div>", unsafe_allow_html=True)
             
-            # -----------------------------------------
-            # Processed Text Section
-            # -----------------------------------------
-            st.markdown("---")
-            st.markdown("<h3 style='text-align: right; direction: rtl; color: #667eea;'>النص بعد المعالجة</h3>", unsafe_allow_html=True)
-            st.markdown(f'<div class="rtl-text" style="background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%); padding: 20px; border-radius: 15px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);">{cleaned}</div>', unsafe_allow_html=True)
+
 
 # Footer
 st.markdown("---")
 st.markdown("<p style='text-align: center; color: #667eea;'>© 2025 — مشروع بَيِّنْ</p>", unsafe_allow_html=True)
+
 
 
