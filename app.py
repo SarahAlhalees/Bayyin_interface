@@ -47,35 +47,37 @@ def load_models():
         models['orig_tokenizer'] = None
         models['orig_model'] = None
     
-    # Model 1: Machine Learning
+    # Model 1: CAMeLBERTmix_D3Tok
     try:
-        ml_repo = "SarahAlhalees/MachineLearning"
-        models['ml_tokenizer'] = AutoTokenizer.from_pretrained(ml_repo, trust_remote_code=True)
-        models['ml_model'] = AutoModelForSequenceClassification.from_pretrained(ml_repo, trust_remote_code=True)
+        mix_repo = "SarahAlhalees/CAMeLBERTmix_D3Tok"
+        mix_subfolder = "CAMeLBERTmix_D3Tok"
+        models['mix_tokenizer'] = AutoTokenizer.from_pretrained(mix_repo, subfolder=mix_subfolder)
+        models['mix_model'] = AutoModelForSequenceClassification.from_pretrained(mix_repo, subfolder=mix_subfolder)
     except Exception as e:
-        st.error(f"خطأ في تحميل نموذج Machine Learning: {str(e)}")
-        models['ml_tokenizer'] = None
-        models['ml_model'] = None
+        st.error(f"خطأ في تحميل نموذج CAMeLBERTmix: {str(e)}")
+        models['mix_tokenizer'] = None
+        models['mix_model'] = None
     
-    # Model 2: Deep Learning
+    # Model 2: CAMeLBERTmsa_D3Tok
     try:
-        dl_repo = "SarahAlhalees/Deeplearning"
-        models['dl_tokenizer'] = AutoTokenizer.from_pretrained(dl_repo, trust_remote_code=True)
-        models['dl_model'] = AutoModelForSequenceClassification.from_pretrained(dl_repo, trust_remote_code=True)
+        msa_repo = "SarahAlhalees/CAMeLBERTmsa_D3Tok"
+        msa_subfolder = "CAMeLBERTmsa_D3Tok"
+        models['msa_tokenizer'] = AutoTokenizer.from_pretrained(msa_repo, subfolder=msa_subfolder)
+        models['msa_model'] = AutoModelForSequenceClassification.from_pretrained(msa_repo, subfolder=msa_subfolder)
     except Exception as e:
-        st.error(f"خطأ في تحميل نموذج Deep Learning: {str(e)}")
-        models['dl_tokenizer'] = None
-        models['dl_model'] = None
+        st.error(f"خطأ في تحميل نموذج CAMeLBERTmsa: {str(e)}")
+        models['msa_tokenizer'] = None
+        models['msa_model'] = None
     
     return models
 
 models_dict = load_models()
 orig_tokenizer = models_dict.get('orig_tokenizer')
 orig_model = models_dict.get('orig_model')
-ml_tokenizer = models_dict.get('ml_tokenizer')
-ml_model = models_dict.get('ml_model')
-dl_tokenizer = models_dict.get('dl_tokenizer')
-dl_model = models_dict.get('dl_model')
+mix_tokenizer = models_dict.get('mix_tokenizer')
+mix_model = models_dict.get('mix_model')
+msa_tokenizer = models_dict.get('msa_tokenizer')
+msa_model = models_dict.get('msa_model')
 
 # -----------------------------------------
 # UI Layout with Colorful Styling
@@ -112,10 +114,10 @@ st.markdown("""
         background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
         color: #333;
     }
-    .model-card-ml {
+    .model-card-mix {
         background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
     }
-    .model-card-dl {
+    .model-card-msa {
         background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
     }
     .level-badge {
@@ -151,116 +153,147 @@ if st.button("تصنيف النص", use_container_width=True):
     if not text.strip():
         st.warning("الرجاء إدخال نص.")
     else:
-        cleaned = normalize_ar(text)
+        # Check if at least one model is loaded
+        if not any([orig_model, mix_model, msa_model]):
+            st.error("لم يتم تحميل أي نموذج. الرجاء التحقق من الاتصال بالإنترنت والمحاولة مرة أخرى.")
+        else:
+            cleaned = normalize_ar(text)
         
-        # Predict with Original Model (Arabertv2_D3Tok)
-        orig_inputs = orig_tokenizer(
-            cleaned,
-            return_tensors="pt",
-            truncation=True,
-            padding=True,
-            max_length=256
-        )
-        
-        with torch.no_grad():
-            orig_logits = orig_model(**orig_inputs).logits
-        
-        orig_probs = torch.softmax(orig_logits, dim=-1).numpy()[0]
-        orig_pred_idx = np.argmax(orig_probs)
-        orig_level = orig_pred_idx + 1
-        
-        # Predict with Model 1 (Machine Learning)
-        ml_inputs = ml_tokenizer(
-            cleaned,
-            return_tensors="pt",
-            truncation=True,
-            padding=True,
-            max_length=256
-        )
-        
-        with torch.no_grad():
-            ml_logits = ml_model(**ml_inputs).logits
-        
-        ml_probs = torch.softmax(ml_logits, dim=-1).numpy()[0]
-        ml_pred_idx = np.argmax(ml_probs)
-        ml_level = ml_pred_idx + 1
-        
-        # Predict with Model 2 (Deep Learning)
-        dl_inputs = dl_tokenizer(
-            cleaned,
-            return_tensors="pt",
-            truncation=True,
-            padding=True,
-            max_length=256
-        )
-        
-        with torch.no_grad():
-            dl_logits = dl_model(**dl_inputs).logits
-        
-        dl_probs = torch.softmax(dl_logits, dim=-1).numpy()[0]
-        dl_pred_idx = np.argmax(dl_probs)
-        dl_level = dl_pred_idx + 1
+            # Predict with Original Model (Arabertv2_D3Tok)
+            orig_level = None
+            orig_probs = None
+            orig_pred_idx = None
+            
+            if orig_model and orig_tokenizer:
+                try:
+                    orig_inputs = orig_tokenizer(
+                        cleaned,
+                        return_tensors="pt",
+                        truncation=True,
+                        padding=True,
+                        max_length=256
+                    )
+                    
+                    with torch.no_grad():
+                        orig_logits = orig_model(**orig_inputs).logits
+                    
+                    orig_probs = torch.softmax(orig_logits, dim=-1).numpy()[0]
+                    orig_pred_idx = np.argmax(orig_probs)
+                    orig_level = orig_pred_idx + 1
+                except Exception as e:
+                    st.warning(f"تعذر التنبؤ بالنموذج الأصلي: {str(e)}")
+            
+            # Predict with Model 1 (CAMeLBERTmix)
+            mix_level = None
+            mix_probs = None
+            mix_pred_idx = None
+            
+            if mix_model and mix_tokenizer:
+                try:
+                    mix_inputs = mix_tokenizer(
+                        cleaned,
+                        return_tensors="pt",
+                        truncation=True,
+                        padding=True,
+                        max_length=256
+                    )
+                    
+                    with torch.no_grad():
+                        mix_logits = mix_model(**mix_inputs).logits
+                    
+                    mix_probs = torch.softmax(mix_logits, dim=-1).numpy()[0]
+                    mix_pred_idx = np.argmax(mix_probs)
+                    mix_level = mix_pred_idx + 1
+                except Exception as e:
+                    st.warning(f"تعذر التنبؤ بنموذج CAMeLBERTmix: {str(e)}")
+            
+            # Predict with Model 2 (CAMeLBERTmsa)
+            msa_level = None
+            msa_probs = None
+            msa_pred_idx = None
+            
+            if msa_model and msa_tokenizer:
+                try:
+                    msa_inputs = msa_tokenizer(
+                        cleaned,
+                        return_tensors="pt",
+                        truncation=True,
+                        padding=True,
+                        max_length=256
+                    )
+                    
+                    with torch.no_grad():
+                        msa_logits = msa_model(**msa_inputs).logits
+                    
+                    msa_probs = torch.softmax(msa_logits, dim=-1).numpy()[0]
+                    msa_pred_idx = np.argmax(msa_probs)
+                    msa_level = msa_pred_idx + 1
+                except Exception as e:
+                    st.warning(f"تعذر التنبؤ بنموذج CAMeLBERTmsa: {str(e)}")
 
-        # -----------------------------------------
-        # Results Section
-        # -----------------------------------------
-        st.markdown("---")
-        st.markdown("<h2 style='text-align: center; direction: rtl; color: #667eea;'>نتائج التصنيف</h2>", unsafe_allow_html=True)
-        
-        level_colors = {1: "", 2: "", 3: "", 4: "", 5: "", 6: ""}
-        level_names = {
-            1: "سهل جداً", 2: "سهل", 3: "متوسط", 
-            4: "صعب قليلاً", 5: "صعب", 6: "صعب جداً"
-        }
-        
-        # Original Model Results
-        st.markdown("<div class='model-card model-card-orig'>", unsafe_allow_html=True)
-        st.markdown("<h3 style='text-align: right; margin: 0; color: #333;'>النموذج الأصلي (Arabertv2_D3Tok)</h3>", unsafe_allow_html=True)
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            st.markdown(f"<div class='level-badge level-{orig_level}'>{level_colors.get(orig_level, '')} المستوى {orig_level}</div>", unsafe_allow_html=True)
-        with col2:
-            st.markdown(f"<p style='font-size: 1.3em; margin-top: 15px; color: #333;'><strong>{level_names.get(orig_level, 'غير معروف')}</strong></p>", unsafe_allow_html=True)
-        
-        st.progress(int(orig_probs[orig_pred_idx] * 100))
-        st.markdown(f"<p style='text-align: right; color: #333;'><strong>نسبة الثقة:</strong> {orig_probs[orig_pred_idx]:.2%}</p>", unsafe_allow_html=True)
-        st.markdown("</div>", unsafe_allow_html=True)
-        
-        # Machine Learning Model Results
-        st.markdown("<div class='model-card model-card-ml'>", unsafe_allow_html=True)
-        st.markdown("<h3 style='text-align: right; margin: 0;'>نموذج التعلم الآلي (Machine Learning)</h3>", unsafe_allow_html=True)
-        
-        col3, col4 = st.columns(2)
-        with col3:
-            st.markdown(f"<div class='level-badge level-{ml_level}'>{level_colors.get(ml_level, '')} المستوى {ml_level}</div>", unsafe_allow_html=True)
-        with col4:
-            st.markdown(f"<p style='font-size: 1.3em; margin-top: 15px;'><strong>{level_names.get(ml_level, 'غير معروف')}</strong></p>", unsafe_allow_html=True)
-        
-        st.progress(int(ml_probs[ml_pred_idx] * 100))
-        st.markdown(f"<p style='text-align: right;'><strong>نسبة الثقة:</strong> {ml_probs[ml_pred_idx]:.2%}</p>", unsafe_allow_html=True)
-        st.markdown("</div>", unsafe_allow_html=True)
-        
-        # Deep Learning Model Results
-        st.markdown("<div class='model-card model-card-dl'>", unsafe_allow_html=True)
-        st.markdown("<h3 style='text-align: right; margin: 0;'>نموذج التعلم العميق (Deep Learning)</h3>", unsafe_allow_html=True)
-        
-        col5, col6 = st.columns(2)
-        with col5:
-            st.markdown(f"<div class='level-badge level-{dl_level}'>{level_colors.get(dl_level, '')} المستوى {dl_level}</div>", unsafe_allow_html=True)
-        with col6:
-            st.markdown(f"<p style='font-size: 1.3em; margin-top: 15px;'><strong>{level_names.get(dl_level, 'غير معروف')}</strong></p>", unsafe_allow_html=True)
-        
-        st.progress(int(dl_probs[dl_pred_idx] * 100))
-        st.markdown(f"<p style='text-align: right;'><strong>نسبة الثقة:</strong> {dl_probs[dl_pred_idx]:.2%}</p>", unsafe_allow_html=True)
-        st.markdown("</div>", unsafe_allow_html=True)
-        
-        # -----------------------------------------
-        # Processed Text Section
-        # -----------------------------------------
-        st.markdown("---")
-        st.markdown("<h3 style='text-align: right; direction: rtl; color: #667eea;'>النص بعد المعالجة</h3>", unsafe_allow_html=True)
-        st.markdown(f'<div class="rtl-text" style="background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%); padding: 20px; border-radius: 15px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);">{cleaned}</div>', unsafe_allow_html=True)
+            # -----------------------------------------
+            # Results Section
+            # -----------------------------------------
+            st.markdown("---")
+            st.markdown("<h2 style='text-align: center; direction: rtl; color: #667eea;'>نتائج التصنيف</h2>", unsafe_allow_html=True)
+            
+            level_colors = {1: "", 2: "", 3: "", 4: "", 5: "", 6: ""}
+            level_names = {
+                1: "سهل جداً", 2: "سهل", 3: "متوسط", 
+                4: "صعب قليلاً", 5: "صعب", 6: "صعب جداً"
+            }
+            
+            # Original Model Results
+            if orig_level is not None:
+                st.markdown("<div class='model-card model-card-orig'>", unsafe_allow_html=True)
+                st.markdown("<h3 style='text-align: right; margin: 0; color: #333;'>النموذج الأصلي (Arabertv2_D3Tok)</h3>", unsafe_allow_html=True)
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.markdown(f"<div class='level-badge level-{orig_level}'>{level_colors.get(orig_level, '')} المستوى {orig_level}</div>", unsafe_allow_html=True)
+                with col2:
+                    st.markdown(f"<p style='font-size: 1.3em; margin-top: 15px; color: #333;'><strong>{level_names.get(orig_level, 'غير معروف')}</strong></p>", unsafe_allow_html=True)
+                
+                st.progress(int(orig_probs[orig_pred_idx] * 100))
+                st.markdown(f"<p style='text-align: right; color: #333;'><strong>نسبة الثقة:</strong> {orig_probs[orig_pred_idx]:.2%}</p>", unsafe_allow_html=True)
+                st.markdown("</div>", unsafe_allow_html=True)
+            
+            # CAMeLBERTmix Model Results
+            if mix_level is not None:
+                st.markdown("<div class='model-card model-card-mix'>", unsafe_allow_html=True)
+                st.markdown("<h3 style='text-align: right; margin: 0;'>نموذج CAMeLBERTmix</h3>", unsafe_allow_html=True)
+                
+                col3, col4 = st.columns(2)
+                with col3:
+                    st.markdown(f"<div class='level-badge level-{mix_level}'>{level_colors.get(mix_level, '')} المستوى {mix_level}</div>", unsafe_allow_html=True)
+                with col4:
+                    st.markdown(f"<p style='font-size: 1.3em; margin-top: 15px;'><strong>{level_names.get(mix_level, 'غير معروف')}</strong></p>", unsafe_allow_html=True)
+                
+                st.progress(int(mix_probs[mix_pred_idx] * 100))
+                st.markdown(f"<p style='text-align: right;'><strong>نسبة الثقة:</strong> {mix_probs[mix_pred_idx]:.2%}</p>", unsafe_allow_html=True)
+                st.markdown("</div>", unsafe_allow_html=True)
+            
+            # CAMeLBERTmsa Model Results
+            if msa_level is not None:
+                st.markdown("<div class='model-card model-card-msa'>", unsafe_allow_html=True)
+                st.markdown("<h3 style='text-align: right; margin: 0;'>نموذج CAMeLBERTmsa</h3>", unsafe_allow_html=True)
+                
+                col5, col6 = st.columns(2)
+                with col5:
+                    st.markdown(f"<div class='level-badge level-{msa_level}'>{level_colors.get(msa_level, '')} المستوى {msa_level}</div>", unsafe_allow_html=True)
+                with col6:
+                    st.markdown(f"<p style='font-size: 1.3em; margin-top: 15px;'><strong>{level_names.get(msa_level, 'غير معروف')}</strong></p>", unsafe_allow_html=True)
+                
+                st.progress(int(msa_probs[msa_pred_idx] * 100))
+                st.markdown(f"<p style='text-align: right;'><strong>نسبة الثقة:</strong> {msa_probs[msa_pred_idx]:.2%}</p>", unsafe_allow_html=True)
+                st.markdown("</div>", unsafe_allow_html=True)
+            
+            # -----------------------------------------
+            # Processed Text Section
+            # -----------------------------------------
+            st.markdown("---")
+            st.markdown("<h3 style='text-align: right; direction: rtl; color: #667eea;'>النص بعد المعالجة</h3>", unsafe_allow_html=True)
+            st.markdown(f'<div class="rtl-text" style="background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%); padding: 20px; border-radius: 15px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);">{cleaned}</div>', unsafe_allow_html=True)
 
 # Footer
 st.markdown("---")
