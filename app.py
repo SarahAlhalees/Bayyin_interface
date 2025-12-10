@@ -204,7 +204,7 @@ if st.button("تصنيف النص", use_container_width=True):
             # Original Model Results
             if orig_level is not None:
                 st.markdown("<div class='model-card model-card-orig'>", unsafe_allow_html=True)
-                st.markdown("<h3 style='text-align: right; margin: 0; color: #333;'>النموذج الأصلي (Arabertv2_D3Tok)</h3>", unsafe_allow_html=True)
+                st.markdown("<h3 style='text-align: right; margin: 0; color: #333;'>Arabertv2_D3Tok</h3>", unsafe_allow_html=True)
                 
                 col1, col2 = st.columns(2)
                 with col1:
@@ -219,7 +219,7 @@ if st.button("تصنيف النص", use_container_width=True):
             # CAMeLBERTmix Model Results
             if mix_level is not None:
                 st.markdown("<div class='model-card model-card-mix'>", unsafe_allow_html=True)
-                st.markdown("<h3 style='text-align: right; margin: 0;'>نموذج CAMeLBERTmix</h3>", unsafe_allow_html=True)
+                st.markdown("<h3 style='text-align: right; margin: 0;'>CAMeLBERTmix</h3>", unsafe_allow_html=True)
                 
                 col3, col4 = st.columns(2)
                 with col3:
@@ -234,7 +234,7 @@ if st.button("تصنيف النص", use_container_width=True):
             # CAMeLBERTmsa Model Results
             if msa_level is not None:
                 st.markdown("<div class='model-card model-card-msa'>", unsafe_allow_html=True)
-                st.markdown("<h3 style='text-align: right; margin: 0;'>نموذج CAMeLBERTmsa</h3>", unsafe_allow_html=True)
+                st.markdown("<h3 style='text-align: right; margin: 0;'>CAMeLBERTmsa</h3>", unsafe_allow_html=True)
                 
                 col5, col6 = st.columns(2)
                 with col5:
@@ -256,4 +256,5 @@ if st.button("تصنيف النص", use_container_width=True):
 # Footer
 st.markdown("---")
 st.markdown("<p style='text-align: center; color: #667eea;'>© 2025 — مشروع بَيِّنْ</p>", unsafe_allow_html=True)
+
 
