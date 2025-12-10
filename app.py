@@ -4,7 +4,6 @@ import torch
 import numpy as np
 import re
 from collections import Counter
-from huggingface_hub import hf_hub_download
 
 # -----------------------------------------
 # Streamlit Page Settings
@@ -31,42 +30,7 @@ def normalize_ar(text):
     text = re.sub(r"\s+", " ", text).strip()
     return text
 
-# -----------------------------------------
-# GNN Model Architecture 
-# -----------------------------------------
-# You MUST paste the exact class structure used to train the model here.
-# This is a placeholder example.
-class ArabicGNNModel(nn.Module):
-    def __init__(self, input_dim=768, hidden_dim=256, num_classes=6, dropout=0.3):
-        super(ArabicGNNModel, self).__init__()
-        self.conv1 = GATConv(input_dim, hidden_dim, heads=4, dropout=dropout)
-        self.conv2 = GATConv(hidden_dim*4, hidden_dim, heads=4, dropout=dropout)
-        self.conv3 = GATConv(hidden_dim*4, hidden_dim, heads=1, dropout=dropout)
-        self.fc1 = nn.Linear(hidden_dim, 128)
-        self.fc2 = nn.Linear(128, num_classes)
-        self.dropout = nn.Dropout(dropout)
-        self.bn1 = nn.BatchNorm1d(hidden_dim*4)
-        self.bn2 = nn.BatchNorm1d(hidden_dim*4)
 
-    def forward(self, x, edge_index):
-        x = self.conv1(x, edge_index)  # no edge_weight
-        x = self.bn1(x)
-        x = F.elu(x)
-        x = self.dropout(x)
-
-        x = self.conv2(x, edge_index)
-        x = self.bn2(x)
-        x = F.elu(x)
-        x = self.dropout(x)
-
-        x = self.conv3(x, edge_index)
-        x = F.elu(x)
-
-        x = self.fc1(x)
-        x = F.relu(x)
-        x = self.dropout(x)
-        x = self.fc2(x)
-        return x
 # -----------------------------------------
 # Load Models
 # -----------------------------------------
@@ -107,28 +71,7 @@ def load_models():
     
     return models
 
-    # --- Model 3: GNN Model (.pt file) ---
-    try:
-        # TODO: Replace with your actual Hugging Face Repo ID and filename
-        gnn_repo_id = "SarahAlhalees/GNN" 
-        gnn_filename = "best_gnn_AraBERTEmbeddings (1).pt"
-        
-        # Download the .pt file
-        model_path = hf_hub_download(repo_id=gnn_repo_id, filename=gnn_filename)
-        
-        # Initialize the architecture (Must match training parameters)
-        # Assuming the GNN takes BERT embeddings, input_dim is usually 768
-        gnn_model = ArabicGNNModel(input_dim=768, num_classes=6) 
-        
-        # Load weights
-        gnn_model.load_state_dict(torch.load(model_path, map_location=torch.device('cpu')))
-        gnn_model.eval() # Set to evaluation mode
-        
-        models['gnn_model'] = gnn_model
-    except Exception as e:
-        # We don't block the app if GNN fails, just log it
-        print(f"GNN Load Error: {e}") 
-        models['gnn_model'] = None
+
     
     return models
 
@@ -139,7 +82,7 @@ mix_tokenizer = models_dict.get('mix_tokenizer')
 mix_model = models_dict.get('mix_model')
 msa_tokenizer = models_dict.get('msa_tokenizer')
 msa_model = models_dict.get('msa_model')
-gnn_model = models_dict.get('gnn_model')
+
 # -----------------------------------------
 # UI Layout with Colorful Styling
 # -----------------------------------------
@@ -168,10 +111,10 @@ st.markdown("""
         justify-content: center; align-items: center;
     }
     
-    .model-card-orig { background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%); color: #444; }
+    .model-card-orig { background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%); color: white; }
     .model-card-mix { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; }
     .model-card-msa { background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; }
-    .model-card-gnn { background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 99%, #fecfef 100%); color: #444; }
+
     
     .level-badge {
         display: inline-block; padding: 8px 20px; border-radius: 25px;
@@ -217,37 +160,12 @@ if st.button("تصنيف النص", use_container_width=True):
                     return None
             return None
 
-        # Helper: Predict using GNN
-        def predict_gnn(model, text_input):
-            if model and orig_tokenizer: # Assuming GNN uses embeddings from orig_tokenizer
-                try:
-                    # 1. Get Embeddings (GNNs usually need embeddings, not raw text)
-                    # This logic depends entirely on how your GNN was trained!
-                    inputs = orig_tokenizer(text_input, return_tensors="pt", truncation=True, padding=True, max_length=256)
-                    
-                    # We extract the CLS token embedding from the orig_model to pass to GNN
-                    # Or create a graph. Here we assume a simple vector input for demonstration.
-                    with torch.no_grad():
-                        bert_out = orig_model.bert(**inputs)
-                        # Use CLS token embedding (batch_size, hidden_dim)
-                        cls_embedding = bert_out.last_hidden_state[:, 0, :]
-                        
-                        # 2. Pass to GNN
-                        logits = model(cls_embedding) 
-                    
-                    probs = torch.softmax(logits, dim=-1).numpy()[0]
-                    return np.argmax(probs) + 1
-                except Exception as e:
-                    print(f"GNN Prediction Error: {e}")
-                    return None
-            return None
 
         # Get predictions
         orig_level = predict_transformer(orig_model, orig_tokenizer, cleaned)
         mix_level = predict_transformer(mix_model, mix_tokenizer, cleaned)
         msa_level = predict_transformer(msa_model, msa_tokenizer, cleaned)
-        # GNN Prediction
-        gnn_level = predict_gnn(gnn_model, cleaned)
+
 
         # -----------------------------------------
         # Hard Voting
@@ -299,10 +217,10 @@ if st.button("تصنيف النص", use_container_width=True):
             display_mini_card(c1, "Arabertv2", orig_level, "model-card-orig")
             display_mini_card(c2, "CAMeL Mix", mix_level, "model-card-mix")
             display_mini_card(c3, "CAMeL MSA", msa_level, "model-card-msa")
-            display_mini_card(c4, "GNN Model", gnn_level, "model-card-gnn")
 
 # Footer
 st.markdown("---")
 st.markdown("<p style='text-align: center; color: #667eea;'>© 2025 — مشروع بَيِّنْ</p>", unsafe_allow_html=True)
+
 
 
