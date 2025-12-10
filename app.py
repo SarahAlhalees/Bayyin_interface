@@ -216,7 +216,7 @@ if st.button("تصنيف النص", use_container_width=True):
                 # Final Result (Hard Voting) Display
                 st.markdown(f"""
                 <div class='final-verdict-card'>
-                    <h2 style='margin:0;'>النتيجة النهائية (Hard Voting)</h2>
+                    <h2 style='margin:0;'>النتيجة النهائية</h2>
                     <h1 style='font-size: 3.5em; margin: 10px 0;'>المستوى {final_level}</h1>
                     <h3 style='opacity: 0.9;'>{level_names.get(final_level, '')}</h3>
                 </div>
@@ -246,3 +246,4 @@ if st.button("تصنيف النص", use_container_width=True):
 # Footer
 st.markdown("---")
 st.markdown("<p style='text-align: center; color: #667eea;'>© 2025 — مشروع بَيِّنْ</p>", unsafe_allow_html=True)
+
