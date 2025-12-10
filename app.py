@@ -38,7 +38,7 @@ def normalize_ar(text):
 # This is a placeholder example.
 class ArabicGNNModel(nn.Module):
     def __init__(self, input_dim=768, hidden_dim=256, num_classes=6, dropout=0.3):
-        super(GNNReadabilityGAT, self).__init__()
+        super(ArabicGNNModel, self).__init__()
         self.conv1 = GATConv(input_dim, hidden_dim, heads=4, dropout=dropout)
         self.conv2 = GATConv(hidden_dim*4, hidden_dim, heads=4, dropout=dropout)
         self.conv3 = GATConv(hidden_dim*4, hidden_dim, heads=1, dropout=dropout)
@@ -304,4 +304,5 @@ if st.button("تصنيف النص", use_container_width=True):
 # Footer
 st.markdown("---")
 st.markdown("<p style='text-align: center; color: #667eea;'>© 2025 — مشروع بَيِّنْ</p>", unsafe_allow_html=True)
+
 
