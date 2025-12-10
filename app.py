@@ -170,7 +170,7 @@ if st.button("تصنيف النص", use_container_width=True):
         # -----------------------------------------
         # Hard Voting
         # -----------------------------------------
-        predictions = [l for l in [orig_level, mix_level, msa_level, gnn_level] if l is not None]
+        predictions = [l for l in [orig_level, mix_level, msa_level] if l is not None]
         
         final_level = None
         if predictions:
@@ -221,6 +221,7 @@ if st.button("تصنيف النص", use_container_width=True):
 # Footer
 st.markdown("---")
 st.markdown("<p style='text-align: center; color: #667eea;'>© 2025 — مشروع بَيِّنْ</p>", unsafe_allow_html=True)
+
 
 
 
