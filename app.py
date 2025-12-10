@@ -52,10 +52,9 @@ def load_models():
     # التغيير هنا: استخدام BertForSequenceClassification
     try:
         mix_repo = "SarahAlhalees/CAMeLBERTmix_D3Tok"
-        mix_subfolder = "CAMeLBERTmix_D3Tok"
-        models['mix_tokenizer'] = AutoTokenizer.from_pretrained(mix_repo, subfolder=mix_subfolder)
+        models['mix_tokenizer'] = AutoTokenizer.from_pretrained(mix_repo)
         # تم استبدال AutoModel بـ BertForSequenceClassification
-        models['mix_model'] = BertForSequenceClassification.from_pretrained(mix_repo, subfolder=mix_subfolder)
+        models['mix_model'] = BertForSequenceClassification.from_pretrained(mix_repo)
     except Exception as e:
         st.error(f"خطأ في تحميل نموذج CAMeLBERTmix: {str(e)}")
         models['mix_tokenizer'] = None
@@ -65,10 +64,9 @@ def load_models():
     # التغيير هنا: استخدام BertForSequenceClassification
     try:
         msa_repo = "SarahAlhalees/CAMeLBERTmsa_D3Tok"
-        msa_subfolder = "CAMeLBERTmsa_D3Tok"
-        models['msa_tokenizer'] = AutoTokenizer.from_pretrained(msa_repo, subfolder=msa_subfolder)
+        models['msa_tokenizer'] = AutoTokenizer.from_pretrained(msa_repo)
         # تم استبدال AutoModel بـ BertForSequenceClassification
-        models['msa_model'] = BertForSequenceClassification.from_pretrained(msa_repo, subfolder=msa_subfolder)
+        models['msa_model'] = BertForSequenceClassification.from_pretrained(msa_repo)
     except Exception as e:
         st.error(f"خطأ في تحميل نموذج CAMeLBERTmsa: {str(e)}")
         models['msa_tokenizer'] = None
@@ -258,3 +256,4 @@ if st.button("تصنيف النص", use_container_width=True):
 # Footer
 st.markdown("---")
 st.markdown("<p style='text-align: center; color: #667eea;'>© 2025 — مشروع بَيِّنْ</p>", unsafe_allow_html=True)
+
