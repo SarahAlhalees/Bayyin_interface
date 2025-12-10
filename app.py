@@ -37,19 +37,36 @@ def normalize_ar(text):
 # You MUST paste the exact class structure used to train the model here.
 # This is a placeholder example.
 class ArabicGNNModel(nn.Module):
-    def __init__(self, input_dim=768, hidden_dim=256, num_classes=6):
-        super(ArabicGNNModel, self).__init__()
-        # Example structure - replace with your actual GNN layers
-        self.fc1 = nn.Linear(input_dim, hidden_dim)
-        self.relu = nn.ReLU()
-        self.fc2 = nn.Linear(hidden_dim, num_classes)
-    
-    def forward(self, x):
-        # Update this forward pass to match your model
-        out = self.fc1(x)
-        out = self.relu(out)
-        logits = self.fc2(out)
-        return logits
+    def __init__(self, input_dim=768, hidden_dim=256, num_classes=6, dropout=0.3):
+        super(GNNReadabilityGAT, self).__init__()
+        self.conv1 = GATConv(input_dim, hidden_dim, heads=4, dropout=dropout)
+        self.conv2 = GATConv(hidden_dim*4, hidden_dim, heads=4, dropout=dropout)
+        self.conv3 = GATConv(hidden_dim*4, hidden_dim, heads=1, dropout=dropout)
+        self.fc1 = nn.Linear(hidden_dim, 128)
+        self.fc2 = nn.Linear(128, num_classes)
+        self.dropout = nn.Dropout(dropout)
+        self.bn1 = nn.BatchNorm1d(hidden_dim*4)
+        self.bn2 = nn.BatchNorm1d(hidden_dim*4)
+
+    def forward(self, x, edge_index):
+        x = self.conv1(x, edge_index)  # no edge_weight
+        x = self.bn1(x)
+        x = F.elu(x)
+        x = self.dropout(x)
+
+        x = self.conv2(x, edge_index)
+        x = self.bn2(x)
+        x = F.elu(x)
+        x = self.dropout(x)
+
+        x = self.conv3(x, edge_index)
+        x = F.elu(x)
+
+        x = self.fc1(x)
+        x = F.relu(x)
+        x = self.dropout(x)
+        x = self.fc2(x)
+        return x
 # -----------------------------------------
 # Load Models
 # -----------------------------------------
@@ -287,3 +304,4 @@ if st.button("تصنيف النص", use_container_width=True):
 # Footer
 st.markdown("---")
 st.markdown("<p style='text-align: center; color: #667eea;'>© 2025 — مشروع بَيِّنْ</p>", unsafe_allow_html=True)
+
