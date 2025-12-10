@@ -3,13 +3,14 @@ from transformers import AutoTokenizer, AutoModelForSequenceClassification, Bert
 import torch
 import numpy as np
 import re
+from collections import Counter
 
 # -----------------------------------------
 # Streamlit Page Settings
 # -----------------------------------------
 st.set_page_config(
     page_title="بَيِّنْ - مصنف قراءة النصوص العربية",
-    page_icon="",
+    page_icon="📚",
     layout="centered"
 )
 
@@ -37,7 +38,6 @@ def load_models():
     models = {}
     
     # Original Model: Arabertv2_D3Tok
-    # هذا النموذج يبدو أنه يعمل بشكل صحيح مع AutoModel، لكن يمكن تغييره إلى Bert لتوحيد الكود
     try:
         orig_repo = "SarahAlhalees/Arabertv2_D3Tok"
         orig_subfolder = "Arabertv2_D3Tok"
@@ -49,11 +49,9 @@ def load_models():
         models['orig_model'] = None
     
     # Model 1: CAMeLBERTmix_D3Tok
-    # التغيير هنا: استخدام BertForSequenceClassification
     try:
         mix_repo = "SarahAlhalees/CAMeLBERTmix_D3Tok"
         models['mix_tokenizer'] = AutoTokenizer.from_pretrained(mix_repo)
-        # تم استبدال AutoModel بـ BertForSequenceClassification
         models['mix_model'] = BertForSequenceClassification.from_pretrained(mix_repo)
     except Exception as e:
         st.error(f"خطأ في تحميل نموذج CAMeLBERTmix: {str(e)}")
@@ -61,11 +59,9 @@ def load_models():
         models['mix_model'] = None
     
     # Model 2: CAMeLBERTmsa_D3Tok
-    # التغيير هنا: استخدام BertForSequenceClassification
     try:
         msa_repo = "SarahAlhalees/CAMeLBERTmsa_D3Tok"
         models['msa_tokenizer'] = AutoTokenizer.from_pretrained(msa_repo)
-        # تم استبدال AutoModel بـ BertForSequenceClassification
         models['msa_model'] = BertForSequenceClassification.from_pretrained(msa_repo)
     except Exception as e:
         st.error(f"خطأ في تحميل نموذج CAMeLBERTmsa: {str(e)}")
@@ -105,35 +101,38 @@ st.markdown("""
         font-weight: bold;
         text-align: center;
     }
-    .model-card {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    .final-verdict-card {
+        background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
         border-radius: 15px;
-        padding: 20px;
+        padding: 25px;
+        margin: 20px 0;
+        color: white;
+        text-align: center;
+        box-shadow: 0 10px 20px rgba(0,0,0,0.3);
+        border: 2px solid #fff;
+    }
+    .model-card {
+        border-radius: 15px;
+        padding: 15px;
         margin: 10px 0;
         color: white;
-        box-shadow: 0 8px 16px rgba(0,0,0,0.2);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
     }
-    .model-card-orig {
-        background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
-        color: #333;
-    }
-    .model-card-mix {
-        background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-    }
-    .model-card-msa {
-        background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
-    }
+    .model-card-orig { background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%); color: #333; }
+    .model-card-mix { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; }
+    .model-card-msa { background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; }
+    
     .level-badge {
         display: inline-block;
         padding: 8px 20px;
         border-radius: 25px;
         font-size: 1.2em;
         font-weight: bold;
-        margin: 10px 0;
+        margin: 5px 0;
     }
-    .level-1, .level-2 { background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); color: white; }
-    .level-3, .level-4 { background: linear-gradient(135deg, #f2994a 0%, #f2c94c 100%); color: white; }
-    .level-5, .level-6 { background: linear-gradient(135deg, #eb3349 0%, #f45c43 100%); color: white; }
+    .level-1, .level-2 { background: #2ecc71; color: white; }
+    .level-3, .level-4 { background: #f39c12; color: white; }
+    .level-5, .level-6 { background: #e74c3c; color: white; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -150,107 +149,88 @@ text = st.text_area(
 )
 
 # -----------------------------------------
-# Prediction
+# Prediction Logic
 # -----------------------------------------
 if st.button("تصنيف النص", use_container_width=True):
     if not text.strip():
         st.warning("الرجاء إدخال نص.")
     else:
-        # Check if at least one model is loaded
         if not any([orig_model, mix_model, msa_model]):
-            st.error("لم يتم تحميل أي نموذج. الرجاء التحقق من الاتصال بالإنترنت والمحاولة مرة أخرى.")
+            st.error("لم يتم تحميل أي نموذج.")
         else:
             cleaned = normalize_ar(text)
             
-            # Helper function for prediction to reduce code duplication
             def predict_level(model, tokenizer, text_input):
                 if model and tokenizer:
                     try:
-                        inputs = tokenizer(
-                            text_input,
-                            return_tensors="pt",
-                            truncation=True,
-                            padding=True,
-                            max_length=256
-                        )
+                        inputs = tokenizer(text_input, return_tensors="pt", truncation=True, padding=True, max_length=256)
                         with torch.no_grad():
                             logits = model(**inputs).logits
-                        
                         probs = torch.softmax(logits, dim=-1).numpy()[0]
                         pred_idx = np.argmax(probs)
                         level = pred_idx + 1
-                        return level, probs, pred_idx
+                        return level
                     except Exception as e:
-                        return None, None, None
-                return None, None, None
+                        return None
+                return None
 
-            # Predict with all models
-            orig_level, orig_probs, orig_pred_idx = predict_level(orig_model, orig_tokenizer, cleaned)
-            mix_level, mix_probs, mix_pred_idx = predict_level(mix_model, mix_tokenizer, cleaned)
-            msa_level, msa_probs, msa_pred_idx = predict_level(msa_model, msa_tokenizer, cleaned)
+            # Get predictions from all models
+            orig_level = predict_level(orig_model, orig_tokenizer, cleaned)
+            mix_level = predict_level(mix_model, mix_tokenizer, cleaned)
+            msa_level = predict_level(msa_model, msa_tokenizer, cleaned)
 
             # -----------------------------------------
-            # Results Section
+            # Hard Voting Implementation
             # -----------------------------------------
-            st.markdown("---")
-            st.markdown("<h2 style='text-align: center; direction: rtl; color: #667eea;'>نتائج التصنيف</h2>", unsafe_allow_html=True)
+            predictions = [l for l in [orig_level, mix_level, msa_level] if l is not None]
             
-            level_colors = {1: "", 2: "", 3: "", 4: "", 5: "", 6: ""}
+            final_level = None
+            if predictions:
+                # Find the most common element (Hard Voting)
+                counts = Counter(predictions)
+                # most_common(1) returns [(value, count)]
+                final_level = counts.most_common(1)[0][0]
+
+            # -----------------------------------------
+            # Results Display
+            # -----------------------------------------
             level_names = {
                 1: "سهل جداً", 2: "سهل", 3: "متوسط", 
                 4: "صعب قليلاً", 5: "صعب", 6: "صعب جداً"
             }
-            
-            # Original Model Results
-            if orig_level is not None:
-                st.markdown("<div class='model-card model-card-orig'>", unsafe_allow_html=True)
-                st.markdown("<h3 style='text-align: right; margin: 0; color: #333;'>Arabertv2</h3>", unsafe_allow_html=True)
-                
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.markdown(f"<div class='level-badge level-{orig_level}'>{level_colors.get(orig_level, '')} المستوى {orig_level}</div>", unsafe_allow_html=True)
-                with col2:
-                    st.markdown(f"<p style='font-size: 1.3em; margin-top: 15px; color: #333;'><strong>{level_names.get(orig_level, 'غير معروف')}</strong></p>", unsafe_allow_html=True)
-                
-                st.progress(int(orig_probs[orig_pred_idx] * 100))
-                st.markdown(f"<p style='text-align: right; color: #333;'><strong>نسبة الثقة:</strong> {orig_probs[orig_pred_idx]:.2%}</p>", unsafe_allow_html=True)
-                st.markdown("</div>", unsafe_allow_html=True)
-            
-            # CAMeLBERTmix Model Results
-            if mix_level is not None:
-                st.markdown("<div class='model-card model-card-mix'>", unsafe_allow_html=True)
-                st.markdown("<h3 style='text-align: right; margin: 0;'>CAMeLBERT-MIX</h3>", unsafe_allow_html=True)
-                
-                col3, col4 = st.columns(2)
-                with col3:
-                    st.markdown(f"<div class='level-badge level-{mix_level}'>{level_colors.get(mix_level, '')} المستوى {mix_level}</div>", unsafe_allow_html=True)
-                with col4:
-                    st.markdown(f"<p style='font-size: 1.3em; margin-top: 15px;'><strong>{level_names.get(mix_level, 'غير معروف')}</strong></p>", unsafe_allow_html=True)
-                
-                st.progress(int(mix_probs[mix_pred_idx] * 100))
-                st.markdown(f"<p style='text-align: right;'><strong>نسبة الثقة:</strong> {mix_probs[mix_pred_idx]:.2%}</p>", unsafe_allow_html=True)
-                st.markdown("</div>", unsafe_allow_html=True)
-            
-            # CAMeLBERTmsa Model Results
-            if msa_level is not None:
-                st.markdown("<div class='model-card model-card-msa'>", unsafe_allow_html=True)
-                st.markdown("<h3 style='text-align: right; margin: 0;'>CAMeLBERT-MSA</h3>", unsafe_allow_html=True)
-                
-                col5, col6 = st.columns(2)
-                with col5:
-                    st.markdown(f"<div class='level-badge level-{msa_level}'>{level_colors.get(msa_level, '')} المستوى {msa_level}</div>", unsafe_allow_html=True)
-                with col6:
-                    st.markdown(f"<p style='font-size: 1.3em; margin-top: 15px;'><strong>{level_names.get(msa_level, 'غير معروف')}</strong></p>", unsafe_allow_html=True)
-                
-                st.progress(int(msa_probs[msa_pred_idx] * 100))
-                st.markdown(f"<p style='text-align: right;'><strong>نسبة الثقة:</strong> {msa_probs[msa_pred_idx]:.2%}</p>", unsafe_allow_html=True)
-                st.markdown("</div>", unsafe_allow_html=True)
-            
 
+            if final_level:
+                st.markdown("---")
+                # Final Result (Hard Voting) Display
+                st.markdown(f"""
+                <div class='final-verdict-card'>
+                    <h2 style='margin:0;'>النتيجة النهائية (Hard Voting)</h2>
+                    <h1 style='font-size: 3.5em; margin: 10px 0;'>المستوى {final_level}</h1>
+                    <h3 style='opacity: 0.9;'>{level_names.get(final_level, '')}</h3>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                st.markdown("<h4 style='text-align: right; direction: rtl; color: #555;'>تفاصيل النماذج:</h4>", unsafe_allow_html=True)
+
+            # Columns for individual models
+            c1, c2, c3 = st.columns(3)
+
+            # Helper to display card (Modified: Removed Confidence)
+            def display_mini_card(column, title, level, css_class):
+                with column:
+                    if level:
+                        st.markdown(f"""
+                        <div class='model-card {css_class}' style='text-align: center;'>
+                            <h4 style='margin-bottom:5px;'>{title}</h4>
+                            <div class='level-badge level-{level}'>المستوى {level}</div>
+                            <p style='margin-top:5px; font-weight:bold;'>{level_names.get(level)}</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+
+            display_mini_card(c1, "Arabertv2", orig_level, "model-card-orig")
+            display_mini_card(c2, "CAMeLBERT Mix", mix_level, "model-card-mix")
+            display_mini_card(c3, "CAMeLBERT MSA", msa_level, "model-card-msa")
 
 # Footer
 st.markdown("---")
 st.markdown("<p style='text-align: center; color: #667eea;'>© 2025 — مشروع بَيِّنْ</p>", unsafe_allow_html=True)
-
-
-
