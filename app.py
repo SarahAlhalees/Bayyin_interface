@@ -1,5 +1,5 @@
 import streamlit as st
-from transformers import AutoTokenizer, AutoModelForSequenceClassification
+from transformers import AutoTokenizer, AutoModelForSequenceClassification, BertForSequenceClassification
 import torch
 import numpy as np
 import re
@@ -37,6 +37,7 @@ def load_models():
     models = {}
     
     # Original Model: Arabertv2_D3Tok
+    # هذا النموذج يبدو أنه يعمل بشكل صحيح مع AutoModel، لكن يمكن تغييره إلى Bert لتوحيد الكود
     try:
         orig_repo = "SarahAlhalees/Arabertv2_D3Tok"
         orig_subfolder = "Arabertv2_D3Tok"
@@ -48,22 +49,26 @@ def load_models():
         models['orig_model'] = None
     
     # Model 1: CAMeLBERTmix_D3Tok
+    # التغيير هنا: استخدام BertForSequenceClassification
     try:
         mix_repo = "SarahAlhalees/CAMeLBERTmix_D3Tok"
         mix_subfolder = "CAMeLBERTmix_D3Tok"
         models['mix_tokenizer'] = AutoTokenizer.from_pretrained(mix_repo, subfolder=mix_subfolder)
-        models['mix_model'] = AutoModelForSequenceClassification.from_pretrained(mix_repo, subfolder=mix_subfolder)
+        # تم استبدال AutoModel بـ BertForSequenceClassification
+        models['mix_model'] = BertForSequenceClassification.from_pretrained(mix_repo, subfolder=mix_subfolder)
     except Exception as e:
         st.error(f"خطأ في تحميل نموذج CAMeLBERTmix: {str(e)}")
         models['mix_tokenizer'] = None
         models['mix_model'] = None
     
     # Model 2: CAMeLBERTmsa_D3Tok
+    # التغيير هنا: استخدام BertForSequenceClassification
     try:
         msa_repo = "SarahAlhalees/CAMeLBERTmsa_D3Tok"
         msa_subfolder = "CAMeLBERTmsa_D3Tok"
         models['msa_tokenizer'] = AutoTokenizer.from_pretrained(msa_repo, subfolder=msa_subfolder)
-        models['msa_model'] = AutoModelForSequenceClassification.from_pretrained(msa_repo, subfolder=msa_subfolder)
+        # تم استبدال AutoModel بـ BertForSequenceClassification
+        models['msa_model'] = BertForSequenceClassification.from_pretrained(msa_repo, subfolder=msa_subfolder)
     except Exception as e:
         st.error(f"خطأ في تحميل نموذج CAMeLBERTmsa: {str(e)}")
         models['msa_tokenizer'] = None
@@ -158,78 +163,33 @@ if st.button("تصنيف النص", use_container_width=True):
             st.error("لم يتم تحميل أي نموذج. الرجاء التحقق من الاتصال بالإنترنت والمحاولة مرة أخرى.")
         else:
             cleaned = normalize_ar(text)
-        
-            # Predict with Original Model (Arabertv2_D3Tok)
-            orig_level = None
-            orig_probs = None
-            orig_pred_idx = None
             
-            if orig_model and orig_tokenizer:
-                try:
-                    orig_inputs = orig_tokenizer(
-                        cleaned,
-                        return_tensors="pt",
-                        truncation=True,
-                        padding=True,
-                        max_length=256
-                    )
-                    
-                    with torch.no_grad():
-                        orig_logits = orig_model(**orig_inputs).logits
-                    
-                    orig_probs = torch.softmax(orig_logits, dim=-1).numpy()[0]
-                    orig_pred_idx = np.argmax(orig_probs)
-                    orig_level = orig_pred_idx + 1
-                except Exception as e:
-                    st.warning(f"تعذر التنبؤ بالنموذج الأصلي: {str(e)}")
-            
-            # Predict with Model 1 (CAMeLBERTmix)
-            mix_level = None
-            mix_probs = None
-            mix_pred_idx = None
-            
-            if mix_model and mix_tokenizer:
-                try:
-                    mix_inputs = mix_tokenizer(
-                        cleaned,
-                        return_tensors="pt",
-                        truncation=True,
-                        padding=True,
-                        max_length=256
-                    )
-                    
-                    with torch.no_grad():
-                        mix_logits = mix_model(**mix_inputs).logits
-                    
-                    mix_probs = torch.softmax(mix_logits, dim=-1).numpy()[0]
-                    mix_pred_idx = np.argmax(mix_probs)
-                    mix_level = mix_pred_idx + 1
-                except Exception as e:
-                    st.warning(f"تعذر التنبؤ بنموذج CAMeLBERTmix: {str(e)}")
-            
-            # Predict with Model 2 (CAMeLBERTmsa)
-            msa_level = None
-            msa_probs = None
-            msa_pred_idx = None
-            
-            if msa_model and msa_tokenizer:
-                try:
-                    msa_inputs = msa_tokenizer(
-                        cleaned,
-                        return_tensors="pt",
-                        truncation=True,
-                        padding=True,
-                        max_length=256
-                    )
-                    
-                    with torch.no_grad():
-                        msa_logits = msa_model(**msa_inputs).logits
-                    
-                    msa_probs = torch.softmax(msa_logits, dim=-1).numpy()[0]
-                    msa_pred_idx = np.argmax(msa_probs)
-                    msa_level = msa_pred_idx + 1
-                except Exception as e:
-                    st.warning(f"تعذر التنبؤ بنموذج CAMeLBERTmsa: {str(e)}")
+            # Helper function for prediction to reduce code duplication
+            def predict_level(model, tokenizer, text_input):
+                if model and tokenizer:
+                    try:
+                        inputs = tokenizer(
+                            text_input,
+                            return_tensors="pt",
+                            truncation=True,
+                            padding=True,
+                            max_length=256
+                        )
+                        with torch.no_grad():
+                            logits = model(**inputs).logits
+                        
+                        probs = torch.softmax(logits, dim=-1).numpy()[0]
+                        pred_idx = np.argmax(probs)
+                        level = pred_idx + 1
+                        return level, probs, pred_idx
+                    except Exception as e:
+                        return None, None, None
+                return None, None, None
+
+            # Predict with all models
+            orig_level, orig_probs, orig_pred_idx = predict_level(orig_model, orig_tokenizer, cleaned)
+            mix_level, mix_probs, mix_pred_idx = predict_level(mix_model, mix_tokenizer, cleaned)
+            msa_level, msa_probs, msa_pred_idx = predict_level(msa_model, msa_tokenizer, cleaned)
 
             # -----------------------------------------
             # Results Section
