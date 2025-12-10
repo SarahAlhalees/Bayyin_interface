@@ -34,25 +34,48 @@ def normalize_ar(text):
 # -----------------------------------------
 @st.cache_resource
 def load_models():
+    models = {}
+    
     # Original Model: Arabertv2_D3Tok
-    orig_repo = "SarahAlhalees/Arabertv2_D3Tok"
-    orig_subfolder = "Arabertv2_D3Tok"
-    orig_tokenizer = AutoTokenizer.from_pretrained(orig_repo, subfolder=orig_subfolder)
-    orig_model = AutoModelForSequenceClassification.from_pretrained(orig_repo, subfolder=orig_subfolder)
+    try:
+        orig_repo = "SarahAlhalees/Arabertv2_D3Tok"
+        orig_subfolder = "Arabertv2_D3Tok"
+        models['orig_tokenizer'] = AutoTokenizer.from_pretrained(orig_repo, subfolder=orig_subfolder)
+        models['orig_model'] = AutoModelForSequenceClassification.from_pretrained(orig_repo, subfolder=orig_subfolder)
+    except Exception as e:
+        st.error(f"خطأ في تحميل النموذج الأصلي: {str(e)}")
+        models['orig_tokenizer'] = None
+        models['orig_model'] = None
     
     # Model 1: Machine Learning
-    ml_repo = "SarahAlhalees/MachineLearning"
-    ml_tokenizer = AutoTokenizer.from_pretrained(ml_repo)
-    ml_model = AutoModelForSequenceClassification.from_pretrained(ml_repo)
+    try:
+        ml_repo = "SarahAlhalees/MachineLearning"
+        models['ml_tokenizer'] = AutoTokenizer.from_pretrained(ml_repo, trust_remote_code=True)
+        models['ml_model'] = AutoModelForSequenceClassification.from_pretrained(ml_repo, trust_remote_code=True)
+    except Exception as e:
+        st.error(f"خطأ في تحميل نموذج Machine Learning: {str(e)}")
+        models['ml_tokenizer'] = None
+        models['ml_model'] = None
     
     # Model 2: Deep Learning
-    dl_repo = "SarahAlhalees/Deeplearning"
-    dl_tokenizer = AutoTokenizer.from_pretrained(dl_repo)
-    dl_model = AutoModelForSequenceClassification.from_pretrained(dl_repo)
+    try:
+        dl_repo = "SarahAlhalees/Deeplearning"
+        models['dl_tokenizer'] = AutoTokenizer.from_pretrained(dl_repo, trust_remote_code=True)
+        models['dl_model'] = AutoModelForSequenceClassification.from_pretrained(dl_repo, trust_remote_code=True)
+    except Exception as e:
+        st.error(f"خطأ في تحميل نموذج Deep Learning: {str(e)}")
+        models['dl_tokenizer'] = None
+        models['dl_model'] = None
     
-    return orig_tokenizer, orig_model, ml_tokenizer, ml_model, dl_tokenizer, dl_model
+    return models
 
-orig_tokenizer, orig_model, ml_tokenizer, ml_model, dl_tokenizer, dl_model = load_models()
+models_dict = load_models()
+orig_tokenizer = models_dict.get('orig_tokenizer')
+orig_model = models_dict.get('orig_model')
+ml_tokenizer = models_dict.get('ml_tokenizer')
+ml_model = models_dict.get('ml_model')
+dl_tokenizer = models_dict.get('dl_tokenizer')
+dl_model = models_dict.get('dl_model')
 
 # -----------------------------------------
 # UI Layout with Colorful Styling
