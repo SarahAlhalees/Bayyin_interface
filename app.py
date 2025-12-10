@@ -117,8 +117,15 @@ st.markdown("""
         margin: 10px 0;
         color: white;
         box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        
+        /* --- NEW LINES TO FIX SIZE --- */
+        min-height: 180px;  /* Forces all boxes to be at least this tall */
+        display: flex;      /* Enables flexible layout */
+        flex-direction: column; /* Stacks items vertically */
+        justify-content: center; /* Centers items vertically */
+        align-items: center;     /* Centers items horizontally */
     }
-    .model-card-orig { background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%); color: #333; }
+    .model-card-orig { background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%); color: white; }
     .model-card-mix { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; }
     .model-card-msa { background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; }
     
@@ -234,3 +241,4 @@ if st.button("تصنيف النص", use_container_width=True):
 # Footer
 st.markdown("---")
 st.markdown("<p style='text-align: center; color: #667eea;'>© 2025 — مشروع بَيِّنْ</p>", unsafe_allow_html=True)
+
