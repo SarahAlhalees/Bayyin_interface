@@ -112,18 +112,14 @@ st.markdown("""
         border: 2px solid #fff;
     }
     
-    /* --- UPDATED MODEL CARD CSS --- */
+    /* --- FIXED MODEL CARD CSS --- */
     .model-card {
         border-radius: 15px;
         padding: 15px;
         margin: 10px 0;
         color: white;
         box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-        
-        /* Forces all cards to be exactly this height */
-        height: 220px; 
-        
-        /* Flexbox centers the content vertically and horizontally */
+        height: 220px; /* Fixed height for consistency */
         display: flex;
         flex-direction: column;
         justify-content: center;
@@ -164,9 +160,18 @@ text = st.text_area(
 # Prediction Logic
 # -----------------------------------------
 if st.button("تصنيف النص", use_container_width=True):
+    
+    # 1. Check if text is empty
     if not text.strip():
-        st.warning("الرجاء إدخال نص.")
+        st.error("الرجاء إدخال نص قبل الضغط على زر التصنيف.")
+    
+    # 2. Check if text contains Arabic characters
+    # Uses Regex to look for characters in the Arabic Unicode block
+    elif not re.search(r'[\u0600-\u06ff]', text):
+        st.error("عذراً، النص المدخل لا يبدو أنه باللغة العربية. الرجاء إدخال نص عربي صحيح.")
+        
     else:
+        # If checks pass, proceed with model logic
         if not any([orig_model, mix_model, msa_model]):
             st.error("لم يتم تحميل أي نموذج.")
         else:
@@ -200,7 +205,6 @@ if st.button("تصنيف النص", use_container_width=True):
             if predictions:
                 # Find the most common element (Hard Voting)
                 counts = Counter(predictions)
-                # most_common(1) returns [(value, count)]
                 final_level = counts.most_common(1)[0][0]
 
             # -----------------------------------------
@@ -227,7 +231,6 @@ if st.button("تصنيف النص", use_container_width=True):
             # Columns for individual models
             c1, c2, c3 = st.columns(3)
 
-            # Helper to display card (Removed Confidence, Fixed Size via CSS)
             def display_mini_card(column, title, level, css_class):
                 with column:
                     if level:
@@ -246,4 +249,3 @@ if st.button("تصنيف النص", use_container_width=True):
 # Footer
 st.markdown("---")
 st.markdown("<p style='text-align: center; color: #667eea;'>© 2025 — مشروع بَيِّنْ</p>", unsafe_allow_html=True)
-
