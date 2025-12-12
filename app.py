@@ -4,6 +4,8 @@ import torch
 import numpy as np
 import re
 from collections import Counter
+import joblib
+from huggingface_hub import hf_hub_download
 
 # -----------------------------------------
 # Streamlit Page Settings
@@ -68,6 +70,19 @@ def load_models():
         models['msa_tokenizer'] = None
         models['msa_model'] = None
     
+    # Model 3: BiLSTM AraBERT
+    try:
+        bilstm_repo = "Raya-y/Bayyin_models"
+        bilstm_file = "bilstm_arabert_bayyin.joblib"
+        bilstm_path = hf_hub_download(repo_id=bilstm_repo, filename=bilstm_file)
+        models['bilstm_model'] = joblib.load(bilstm_path)
+        # Load AraBERT tokenizer for BiLSTM embeddings
+        models['bilstm_tokenizer'] = AutoTokenizer.from_pretrained("aubmindlab/bert-base-arabertv2")
+    except Exception as e:
+        st.error(f"خطأ في تحميل نموذج BiLSTM: {str(e)}")
+        models['bilstm_model'] = None
+        models['bilstm_tokenizer'] = None
+    
     return models
 
 models_dict = load_models()
@@ -77,6 +92,8 @@ mix_tokenizer = models_dict.get('mix_tokenizer')
 mix_model = models_dict.get('mix_model')
 msa_tokenizer = models_dict.get('msa_tokenizer')
 msa_model = models_dict.get('msa_model')
+bilstm_model = models_dict.get('bilstm_model')
+bilstm_tokenizer = models_dict.get('bilstm_tokenizer')
 
 # -----------------------------------------
 # UI Layout with Colorful Styling
@@ -129,6 +146,7 @@ st.markdown("""
     .model-card-orig { background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%); color: white; }
     .model-card-mix { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; }
     .model-card-msa { background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; }
+    .model-card-bilstm { background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); color: white; }
     
     .level-badge {
         display: inline-block;
@@ -166,13 +184,12 @@ if st.button("تصنيف النص", use_container_width=True):
         st.error("الرجاء إدخال نص قبل الضغط على زر التصنيف.")
     
     # 2. Check if text contains Arabic characters
-    # Uses Regex to look for characters in the Arabic Unicode block
     elif not re.search(r'[\u0600-\u06ff]', text):
         st.error("عذراً، النص المدخل لا يبدو أنه باللغة العربية. الرجاء إدخال نص عربي صحيح.")
         
     else:
         # If checks pass, proceed with model logic
-        if not any([orig_model, mix_model, msa_model]):
+        if not any([orig_model, mix_model, msa_model, bilstm_model]):
             st.error("لم يتم تحميل أي نموذج.")
         else:
             cleaned = normalize_ar(text)
@@ -190,16 +207,31 @@ if st.button("تصنيف النص", use_container_width=True):
                     except Exception as e:
                         return None
                 return None
+            
+            def predict_bilstm(model, tokenizer, text_input):
+                if model and tokenizer:
+                    try:
+                        # Tokenize text
+                        inputs = tokenizer(text_input, return_tensors="pt", truncation=True, padding=True, max_length=256)
+                        # The BiLSTM model expects the tokenized input
+                        prediction = model.predict([text_input])
+                        level = int(prediction[0])
+                        return level
+                    except Exception as e:
+                        st.warning(f"خطأ في التنبؤ باستخدام BiLSTM: {str(e)}")
+                        return None
+                return None
 
             # Get predictions from all models
             orig_level = predict_level(orig_model, orig_tokenizer, cleaned)
             mix_level = predict_level(mix_model, mix_tokenizer, cleaned)
             msa_level = predict_level(msa_model, msa_tokenizer, cleaned)
+            bilstm_level = predict_bilstm(bilstm_model, bilstm_tokenizer, cleaned)
 
             # -----------------------------------------
             # Hard Voting Implementation
             # -----------------------------------------
-            predictions = [l for l in [orig_level, mix_level, msa_level] if l is not None]
+            predictions = [l for l in [orig_level, mix_level, msa_level, bilstm_level] if l is not None]
             
             final_level = None
             if predictions:
@@ -229,7 +261,8 @@ if st.button("تصنيف النص", use_container_width=True):
                 st.markdown("<h4 style='text-align: right; direction: rtl; color: #555;'>تفاصيل النماذج:</h4>", unsafe_allow_html=True)
 
             # Columns for individual models
-            c1, c2, c3 = st.columns(3)
+            c1, c2 = st.columns(2)
+            c3, c4 = st.columns(2)
 
             def display_mini_card(column, title, level, css_class):
                 with column:
@@ -245,6 +278,7 @@ if st.button("تصنيف النص", use_container_width=True):
             display_mini_card(c1, "Arabertv2", orig_level, "model-card-orig")
             display_mini_card(c2, "CAMeLBERT Mix", mix_level, "model-card-mix")
             display_mini_card(c3, "CAMeLBERT MSA", msa_level, "model-card-msa")
+            display_mini_card(c4, "BiLSTM AraBERT", bilstm_level, "model-card-bilstm")
 
 # Footer
 st.markdown("---")
