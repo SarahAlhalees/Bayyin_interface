@@ -11,12 +11,13 @@ from huggingface_hub import hf_hub_download
 # -----------------------------------------
 # BiLSTM Model Class Definition
 # -----------------------------------------
-class BiLSTMWrapper(nn.Module):
-    def __init__(self, input_dim=768, hidden_dim=128, output_dim=6, num_layers=2, dropout=0.3):
-        super(BiLSTMWrapper, self).__init__()
+class BiLSTMWithMeta(nn.Module):
+    def __init__(self, input_dim=768, meta_dim=10, hidden_dim=128, output_dim=6, num_layers=2, dropout=0.3):
+        super(BiLSTMWithMeta, self).__init__()
         self.hidden_dim = hidden_dim
         self.num_layers = num_layers
         
+        # BiLSTM for text embeddings
         self.lstm = nn.LSTM(
             input_dim, 
             hidden_dim, 
@@ -26,26 +27,26 @@ class BiLSTMWrapper(nn.Module):
             bidirectional=True
         )
         
+        # Combine LSTM output with metadata features
         self.dropout = nn.Dropout(dropout)
-        self.fc = nn.Linear(hidden_dim * 2, output_dim)
+        self.fc = nn.Linear(hidden_dim * 2 + meta_dim, output_dim)
     
-    def forward(self, x):
+    def forward(self, x, meta_features=None):
         lstm_out, _ = self.lstm(x)
-        lstm_out = lstm_out[:, -1, :]
-        out = self.dropout(lstm_out)
+        lstm_out = lstm_out[:, -1, :]  # Take last hidden state
+        
+        # Concatenate with metadata if provided
+        if meta_features is not None:
+            combined = torch.cat([lstm_out, meta_features], dim=1)
+        else:
+            # If no metadata, use zeros
+            batch_size = lstm_out.size(0)
+            zeros = torch.zeros(batch_size, 10).to(lstm_out.device)
+            combined = torch.cat([lstm_out, zeros], dim=1)
+        
+        out = self.dropout(combined)
         out = self.fc(out)
         return out
-    
-    def predict(self, text_list):
-        """Prediction method for compatibility"""
-        self.eval()
-        with torch.no_grad():
-            # This is a placeholder - actual implementation depends on how embeddings are generated
-            predictions = []
-            for text in text_list:
-                # Return a dummy prediction for now
-                predictions.append(3)  # Default to level 3
-        return predictions
 
 # -----------------------------------------
 # Streamlit Page Settings
@@ -276,7 +277,7 @@ if st.button("تصنيف النص", use_container_width=True):
             orig_level = predict_level(orig_model, orig_tokenizer, cleaned)
             mix_level = predict_level(mix_model, mix_tokenizer, cleaned)
             msa_level = predict_level(msa_model, msa_tokenizer, cleaned)
-            bilstm_level = predict_bilstm(bilstm_model, bilstm_tokenizer, cleaned)
+            bilstm_level = predict_bilstm(bilstm_model, bilstm_tokenizer, bilstm_bert, cleaned)
 
             # -----------------------------------------
             # Hard Voting Implementation
