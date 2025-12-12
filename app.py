@@ -143,12 +143,24 @@ class BiLSTMWrapper:
             return torch.softmax(logits, dim=1).cpu().numpy()
 
 
-# Fix for joblib loading - register in multiple places
+# Fix for joblib loading - register classes in all possible namespaces
+import types
+
+# Ensure __main__ exists
 if '__main__' not in sys.modules:
-    import types
     sys.modules['__main__'] = types.ModuleType('__main__')
+
+# Register in __main__
 sys.modules['__main__'].BiLSTMWrapper = BiLSTMWrapper
 sys.modules['__main__'].BiLSTMWithMeta = BiLSTMWithMeta
+
+# ALSO register in "main" because Streamlit loads files under module name "main"
+if 'main' not in sys.modules:
+    sys.modules['main'] = types.ModuleType('main')
+
+sys.modules['main'].BiLSTMWrapper = BiLSTMWrapper
+sys.modules['main'].BiLSTMWithMeta = BiLSTMWithMeta
+
 
 # -----------------------------------------
 # Streamlit Page Settings
@@ -436,6 +448,7 @@ if st.button("تصنيف النص", use_container_width=True):
 # Footer
 st.markdown("---")
 st.markdown("<p style='text-align: center; color: #667eea;'>© 2025 — مشروع بَيِّنْ</p>", unsafe_allow_html=True)
+
 
 
 
