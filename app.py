@@ -1,5 +1,4 @@
 import streamlit as st
-# Add this import at the top with other transformers imports
 from transformers import AutoTokenizer, AutoModelForSequenceClassification, BertForSequenceClassification, AutoModel
 import torch
 import torch.nn as nn
@@ -9,9 +8,10 @@ from collections import Counter
 import joblib
 from huggingface_hub import hf_hub_download
 import sys
+import types
 
 # -----------------------------------------
-# BiLSTM Model Class Definition
+# BiLSTM Model Class Definition (MUST BE BEFORE LOADING)
 # -----------------------------------------
 class BiLSTMWithMeta(nn.Module):
     """
@@ -143,23 +143,28 @@ class BiLSTMWrapper:
             return torch.softmax(logits, dim=1).cpu().numpy()
 
 
-# Fix for joblib loading - register classes in all possible namespaces
-import types
+# -----------------------------------------
+# Fix for joblib loading - IMPROVED METHOD
+# -----------------------------------------
+# Get the current module
+current_module = sys.modules[__name__]
 
-# Ensure __main__ exists
+# Register classes in current module
+current_module.BiLSTMWrapper = BiLSTMWrapper
+current_module.BiLSTMWithMeta = BiLSTMWithMeta
+
+# Also register in __main__ for compatibility
 if '__main__' not in sys.modules:
     sys.modules['__main__'] = types.ModuleType('__main__')
-
-# Register in __main__
 sys.modules['__main__'].BiLSTMWrapper = BiLSTMWrapper
 sys.modules['__main__'].BiLSTMWithMeta = BiLSTMWithMeta
 
-# ALSO register in "main" because Streamlit loads files under module name "main"
+# Register in 'main' namespace (Streamlit specific)
 if 'main' not in sys.modules:
-    sys.modules['main'] = types.ModuleType('main')
-
-sys.modules['main'].BiLSTMWrapper = BiLSTMWrapper
-sys.modules['main'].BiLSTMWithMeta = BiLSTMWithMeta
+    sys.modules['main'] = current_module
+else:
+    sys.modules['main'].BiLSTMWrapper = BiLSTMWrapper
+    sys.modules['main'].BiLSTMWithMeta = BiLSTMWithMeta
 
 
 # -----------------------------------------
@@ -230,10 +235,13 @@ def load_models():
         bilstm_repo = "Raya-y/Bayyin_models"
         bilstm_file = "bilstm_arabert_bayyin.joblib"
         bilstm_path = hf_hub_download(repo_id=bilstm_repo, filename=bilstm_file)
+        
+        # Load with explicit module mapping
         models['bilstm_model'] = joblib.load(bilstm_path)
+        
         # Load AraBERT model for embeddings
         models['bilstm_tokenizer'] = AutoTokenizer.from_pretrained("aubmindlab/bert-base-arabertv2")
-        models['bilstm_bert'] = AutoModelForSequenceClassification.from_pretrained("aubmindlab/bert-base-arabertv2")
+        models['bilstm_bert'] = AutoModel.from_pretrained("aubmindlab/bert-base-arabertv2")
     except Exception as e:
         st.error(f"خطأ في تحميل نموذج BiLSTM: {str(e)}")
         models['bilstm_model'] = None
@@ -287,14 +295,13 @@ st.markdown("""
         border: 2px solid #fff;
     }
     
-    /* --- FIXED MODEL CARD CSS --- */
     .model-card {
         border-radius: 15px;
         padding: 15px;
         margin: 10px 0;
         color: white;
         box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-        height: 220px; /* Fixed height for consistency */
+        height: 220px;
         display: flex;
         flex-direction: column;
         justify-content: center;
@@ -337,16 +344,13 @@ text = st.text_area(
 # -----------------------------------------
 if st.button("تصنيف النص", use_container_width=True):
     
-    # 1. Check if text is empty
     if not text.strip():
         st.error("الرجاء إدخال نص قبل الضغط على زر التصنيف.")
     
-    # 2. Check if text contains Arabic characters
     elif not re.search(r'[\u0600-\u06ff]', text):
         st.error("عذراً، النص المدخل لا يبدو أنه باللغة العربية. الرجاء إدخال نص عربي صحيح.")
         
     else:
-        # If checks pass, proceed with model logic
         if not any([orig_model, mix_model, msa_model, bilstm_model]):
             st.error("لم يتم تحميل أي نموذج.")
         else:
@@ -373,14 +377,10 @@ if st.button("تصنيف النص", use_container_width=True):
                         inputs = tokenizer(text_input, return_tensors="pt", truncation=True, padding=True, max_length=256)
                         with torch.no_grad():
                             outputs = bert_model(**inputs, output_hidden_states=True)
-                            # Get the last hidden state (embeddings)
-                            embeddings = outputs.hidden_states[-1]
+                            embeddings = outputs.hidden_states[-1].mean(dim=1)  # Average pooling
                         
-                        # Use BiLSTM model for prediction
-                        with torch.no_grad():
-                            logits = model(embeddings)
-                            pred_idx = torch.argmax(logits, dim=-1).item()
-                            level = pred_idx + 1
+                        # Use wrapper's predict method
+                        level = model.predict(embeddings.numpy())[0]
                         return level
                     except Exception as e:
                         st.warning(f"خطأ في التنبؤ باستخدام BiLSTM: {str(e)}")
@@ -393,20 +393,15 @@ if st.button("تصنيف النص", use_container_width=True):
             msa_level = predict_level(msa_model, msa_tokenizer, cleaned)
             bilstm_level = predict_bilstm(bilstm_model, bilstm_tokenizer, bilstm_bert, cleaned)
 
-            # -----------------------------------------
             # Hard Voting Implementation
-            # -----------------------------------------
             predictions = [l for l in [orig_level, mix_level, msa_level, bilstm_level] if l is not None]
             
             final_level = None
             if predictions:
-                # Find the most common element (Hard Voting)
                 counts = Counter(predictions)
                 final_level = counts.most_common(1)[0][0]
 
-            # -----------------------------------------
             # Results Display
-            # -----------------------------------------
             level_names = {
                 1: "سهل جداً", 2: "سهل", 3: "متوسط", 
                 4: "صعب قليلاً", 5: "صعب", 6: "صعب جداً"
@@ -414,7 +409,6 @@ if st.button("تصنيف النص", use_container_width=True):
 
             if final_level:
                 st.markdown("---")
-                # Final Result (Hard Voting) Display
                 st.markdown(f"""
                 <div class='final-verdict-card'>
                     <h2 style='margin:0;'>النتيجة النهائية</h2>
@@ -425,7 +419,6 @@ if st.button("تصنيف النص", use_container_width=True):
                 
                 st.markdown("<h4 style='text-align: right; direction: rtl; color: #555;'>تفاصيل النماذج:</h4>", unsafe_allow_html=True)
 
-            # Columns for individual models
             c1, c2 = st.columns(2)
             c3, c4 = st.columns(2)
 
@@ -448,9 +441,3 @@ if st.button("تصنيف النص", use_container_width=True):
 # Footer
 st.markdown("---")
 st.markdown("<p style='text-align: center; color: #667eea;'>© 2025 — مشروع بَيِّنْ</p>", unsafe_allow_html=True)
-
-
-
-
-
-
