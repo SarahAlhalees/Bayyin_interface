@@ -13,9 +13,7 @@ from huggingface_hub import hf_hub_download
 # -----------------------------------------
 class BiLSTMWithMeta(nn.Module):
         
-    # Fix for joblib loading
-    import __main__
-    __main__.BiLSTMWithMeta = BiLSTMWithMeta
+
     def __init__(self, input_dim=768, meta_dim=10, hidden_dim=128, output_dim=6, num_layers=2, dropout=0.3):
         super(BiLSTMWithMeta, self).__init__()
         self.hidden_dim = hidden_dim
@@ -51,7 +49,10 @@ class BiLSTMWithMeta(nn.Module):
         out = self.dropout(combined)
         out = self.fc(out)
         return out
-
+            
+# Fix for joblib loading
+import __main__
+__main__.BiLSTMWithMeta = BiLSTMWithMeta
 # -----------------------------------------
 # Streamlit Page Settings
 # -----------------------------------------
@@ -338,4 +339,5 @@ if st.button("تصنيف النص", use_container_width=True):
 # Footer
 st.markdown("---")
 st.markdown("<p style='text-align: center; color: #667eea;'>© 2025 — مشروع بَيِّنْ</p>", unsafe_allow_html=True)
+
 
