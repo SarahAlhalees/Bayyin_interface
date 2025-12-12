@@ -12,43 +12,71 @@ from huggingface_hub import hf_hub_download
 # BiLSTM Model Class Definition
 # -----------------------------------------
 class BiLSTMWithMeta(nn.Module):
+    """
+    BiLSTM with metadata as described in the research paper.
+    Works with any input embedding (static or contextual).
+    """
+    def __init__(self, input_dim, categorical_cardinalities, num_numeric,
+                 lstm_hidden=256, meta_proj_dim=128, num_classes=6, dropout=0.3,
+                 use_bert=False, bert_model_name=None):
+        super().__init__()
         
-
-    def __init__(self, input_dim=768, meta_dim=10, hidden_dim=128, output_dim=6, num_layers=2, dropout=0.3):
-        super(BiLSTMWithMeta, self).__init__()
-        self.hidden_dim = hidden_dim
-        self.num_layers = num_layers
+        self.use_bert = use_bert
         
-        # BiLSTM for text embeddings
-        self.lstm = nn.LSTM(
-            input_dim, 
-            hidden_dim, 
-            num_layers=num_layers,
-            batch_first=True,
-            dropout=dropout if num_layers > 1 else 0,
-            bidirectional=True
+        if use_bert and bert_model_name:
+            self.bert = AutoModel.from_pretrained(bert_model_name)
+            input_dim = self.bert.config.hidden_size
+        else:
+            self.bert = None
+        
+        self.lstm = nn.LSTM(input_size=input_dim, hidden_size=lstm_hidden,
+                           num_layers=1, batch_first=True, bidirectional=True)
+        
+        self.cat_names = list(categorical_cardinalities.keys())
+        self.cat_embeddings = nn.ModuleDict()
+        total_cat_emb_dim = 0
+        for name, card in categorical_cardinalities.items():
+            emb_dim = min(50, max(4, int(card**0.5)))
+            self.cat_embeddings[name] = nn.Embedding(card, emb_dim)
+            total_cat_emb_dim += emb_dim
+        
+        self.meta_proj = nn.Sequential(
+            nn.Linear(total_cat_emb_dim + num_numeric, meta_proj_dim),
+            nn.ReLU(),
+            nn.Dropout(dropout)
         )
         
-        # Combine LSTM output with metadata features
+        self.classifier = nn.Sequential(
+            nn.Linear(lstm_hidden * 2 + meta_proj_dim, 128),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(128, num_classes)
+        )
         self.dropout = nn.Dropout(dropout)
-        self.fc = nn.Linear(hidden_dim * 2 + meta_dim, output_dim)
     
-    def forward(self, x, meta_features=None):
-        lstm_out, _ = self.lstm(x)
-        lstm_out = lstm_out[:, -1, :]  # Take last hidden state
-        
-        # Concatenate with metadata if provided
-        if meta_features is not None:
-            combined = torch.cat([lstm_out, meta_features], dim=1)
+    def forward(self, x, numeric_meta, categorical_meta, attention_mask=None):
+        if self.use_bert:
+            bert_out = self.bert(input_ids=x, attention_mask=attention_mask)
+            x = bert_out.last_hidden_state
         else:
-            # If no metadata, use zeros
-            batch_size = lstm_out.size(0)
-            zeros = torch.zeros(batch_size, 10).to(lstm_out.device)
-            combined = torch.cat([lstm_out, zeros], dim=1)
+            if len(x.shape) == 2:
+                x = x.unsqueeze(1)
         
-        out = self.dropout(combined)
-        out = self.fc(out)
-        return out
+        lstm_out, _ = self.lstm(x)
+        pooled = lstm_out.mean(dim=1) if self.use_bert else lstm_out.squeeze(1)
+        
+        cat_embs = [self.cat_embeddings[name](categorical_meta[:, i]) 
+                   for i, name in enumerate(self.cat_names)]
+        cat_concat = torch.cat(cat_embs, dim=1) if cat_embs else \
+                     torch.zeros(numeric_meta.size(0), 0, device=numeric_meta.device)
+        
+        meta_concat = torch.cat([numeric_meta, cat_concat], dim=1)
+        meta_vec = self.meta_proj(meta_concat)
+        
+        fused = torch.cat([pooled, meta_vec], dim=1)
+        fused = self.dropout(fused)
+        return self.classifier(fused)
+
             
 # Fix for joblib loading
 import __main__
@@ -339,5 +367,6 @@ if st.button("تصنيف النص", use_container_width=True):
 # Footer
 st.markdown("---")
 st.markdown("<p style='text-align: center; color: #667eea;'>© 2025 — مشروع بَيِّنْ</p>", unsafe_allow_html=True)
+
 
 
