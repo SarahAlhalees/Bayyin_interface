@@ -1,5 +1,6 @@
 import streamlit as st
-from transformers import AutoTokenizer, AutoModelForSequenceClassification, BertForSequenceClassification
+# Add this import at the top with other transformers imports
+from transformers import AutoTokenizer, AutoModelForSequenceClassification, BertForSequenceClassification, AutoModel
 import torch
 import torch.nn as nn
 import numpy as np
@@ -7,6 +8,7 @@ import re
 from collections import Counter
 import joblib
 from huggingface_hub import hf_hub_download
+import sys
 
 # -----------------------------------------
 # BiLSTM Model Class Definition
@@ -77,10 +79,11 @@ class BiLSTMWithMeta(nn.Module):
         fused = self.dropout(fused)
         return self.classifier(fused)
 
-            
-# Fix for joblib loading
+# Fix for joblib loading - register in multiple places
 import __main__
 __main__.BiLSTMWithMeta = BiLSTMWithMeta
+sys.modules['__main__'].BiLSTMWithMeta = BiLSTMWithMeta
+
 # -----------------------------------------
 # Streamlit Page Settings
 # -----------------------------------------
@@ -367,6 +370,7 @@ if st.button("تصنيف النص", use_container_width=True):
 # Footer
 st.markdown("---")
 st.markdown("<p style='text-align: center; color: #667eea;'>© 2025 — مشروع بَيِّنْ</p>", unsafe_allow_html=True)
+
 
 
 
