@@ -4,3 +4,6 @@ torch
 numpy
 sentencepiece
 safetensors
+joblib
+huggingface-hub
+
