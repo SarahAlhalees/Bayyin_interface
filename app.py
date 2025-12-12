@@ -1,11 +1,51 @@
 import streamlit as st
 from transformers import AutoTokenizer, AutoModelForSequenceClassification, BertForSequenceClassification
 import torch
+import torch.nn as nn
 import numpy as np
 import re
 from collections import Counter
 import joblib
 from huggingface_hub import hf_hub_download
+
+# -----------------------------------------
+# BiLSTM Model Class Definition
+# -----------------------------------------
+class BiLSTMWrapper(nn.Module):
+    def __init__(self, input_dim=768, hidden_dim=128, output_dim=6, num_layers=2, dropout=0.3):
+        super(BiLSTMWrapper, self).__init__()
+        self.hidden_dim = hidden_dim
+        self.num_layers = num_layers
+        
+        self.lstm = nn.LSTM(
+            input_dim, 
+            hidden_dim, 
+            num_layers=num_layers,
+            batch_first=True,
+            dropout=dropout if num_layers > 1 else 0,
+            bidirectional=True
+        )
+        
+        self.dropout = nn.Dropout(dropout)
+        self.fc = nn.Linear(hidden_dim * 2, output_dim)
+    
+    def forward(self, x):
+        lstm_out, _ = self.lstm(x)
+        lstm_out = lstm_out[:, -1, :]
+        out = self.dropout(lstm_out)
+        out = self.fc(out)
+        return out
+    
+    def predict(self, text_list):
+        """Prediction method for compatibility"""
+        self.eval()
+        with torch.no_grad():
+            # This is a placeholder - actual implementation depends on how embeddings are generated
+            predictions = []
+            for text in text_list:
+                # Return a dummy prediction for now
+                predictions.append(3)  # Default to level 3
+        return predictions
 
 # -----------------------------------------
 # Streamlit Page Settings
@@ -76,12 +116,14 @@ def load_models():
         bilstm_file = "bilstm_arabert_bayyin.joblib"
         bilstm_path = hf_hub_download(repo_id=bilstm_repo, filename=bilstm_file)
         models['bilstm_model'] = joblib.load(bilstm_path)
-        # Load AraBERT tokenizer for BiLSTM embeddings
+        # Load AraBERT model for embeddings
         models['bilstm_tokenizer'] = AutoTokenizer.from_pretrained("aubmindlab/bert-base-arabertv2")
+        models['bilstm_bert'] = AutoModelForSequenceClassification.from_pretrained("aubmindlab/bert-base-arabertv2")
     except Exception as e:
         st.error(f"خطأ في تحميل نموذج BiLSTM: {str(e)}")
         models['bilstm_model'] = None
         models['bilstm_tokenizer'] = None
+        models['bilstm_bert'] = None
     
     return models
 
@@ -94,6 +136,7 @@ msa_tokenizer = models_dict.get('msa_tokenizer')
 msa_model = models_dict.get('msa_model')
 bilstm_model = models_dict.get('bilstm_model')
 bilstm_tokenizer = models_dict.get('bilstm_tokenizer')
+bilstm_bert = models_dict.get('bilstm_bert')
 
 # -----------------------------------------
 # UI Layout with Colorful Styling
@@ -208,14 +251,21 @@ if st.button("تصنيف النص", use_container_width=True):
                         return None
                 return None
             
-            def predict_bilstm(model, tokenizer, text_input):
-                if model and tokenizer:
+            def predict_bilstm(model, tokenizer, bert_model, text_input):
+                if model and tokenizer and bert_model:
                     try:
-                        # Tokenize text
+                        # Get BERT embeddings
                         inputs = tokenizer(text_input, return_tensors="pt", truncation=True, padding=True, max_length=256)
-                        # The BiLSTM model expects the tokenized input
-                        prediction = model.predict([text_input])
-                        level = int(prediction[0])
+                        with torch.no_grad():
+                            outputs = bert_model(**inputs, output_hidden_states=True)
+                            # Get the last hidden state (embeddings)
+                            embeddings = outputs.hidden_states[-1]
+                        
+                        # Use BiLSTM model for prediction
+                        with torch.no_grad():
+                            logits = model(embeddings)
+                            pred_idx = torch.argmax(logits, dim=-1).item()
+                            level = pred_idx + 1
                         return level
                     except Exception as e:
                         st.warning(f"خطأ في التنبؤ باستخدام BiLSTM: {str(e)}")
