@@ -39,8 +39,8 @@ def load_classification_model():
     # Option 1: If using joblib model from HuggingFace
     from huggingface_hub import hf_hub_download
     model_path = hf_hub_download(
-        repo_id="SarahAlhalees/bayyin-classifier",  # Your classifier repo
-        filename="model.joblib"  # Your joblib model file
+        repo_id="SarahAlhalees/ensemble",  # Your classifier repo
+        filename="meta_svm_tuned.joblib"  # Your joblib model file
     )
     classifier = joblib.load(model_path)
     return classifier
