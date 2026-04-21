@@ -48,7 +48,7 @@ def load_classification_model():
 @st.cache_resource
 def load_simplification_model():
     """Load the text simplification model (generative)"""
-    repo_id = "SarahAlhalees/bayyin-simplifier"  # Your simplification model repo
+    repo_id = "SarahAlhalees/bassit-simplifier"  # Your simplification model repo
     tokenizer = AutoTokenizer.from_pretrained(repo_id)
     model = AutoModelForSeq2SeqLM.from_pretrained(repo_id)
     return tokenizer, model
