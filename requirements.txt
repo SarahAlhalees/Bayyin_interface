@@ -6,4 +6,4 @@ sentencepiece
 safetensors
 joblib
 huggingface-hub
-
+scikit-learn
