@@ -354,20 +354,7 @@ base_models = load_base_models()
 meta_learner = load_meta_learner()
 simplifier_tokenizer, simplifier_model = load_simplification_model()
 
-# --- Debug expander: shows joblib dict keys to help diagnose loading issues ---
-with st.expander("🔧 تشخيص تحميل النماذج", expanded=False):
-    bm = base_models.get('bilstm_model')
-    me = base_models.get('meta_encoders')
-    md = base_models.get('meta_encoders_dict')
-    st.write(f"**bilstm_model type:** `{type(bm)}`")
-    if isinstance(bm, dict):
-        st.write(f"**bilstm_model keys:** `{list(bm.keys())}`")
-    st.write(f"**meta_encoders type:** `{type(me)}`")
-    if isinstance(md, dict):
-        st.write(f"**meta_encoders_dict keys:** `{list(md.keys())}`")
-    st.write(f"**arabert loaded:** `{base_models.get('arabert_model') is not None}`")
-    st.write(f"**camelbert loaded:** `{base_models.get('camelbert_model') is not None}`")
-    st.write(f"**meta_learner loaded:** `{meta_learner is not None}`")
+
 
 # -----------------------------------------
 # Feature Extraction
@@ -408,29 +395,7 @@ def get_bilstm_probs(text, models, max_length=256):
     bilstm     = models['bilstm_model']
     meta_enc   = models['meta_encoders']
 
-    # Safety check — if loading produced a dict instead of a wrapper, try to
-    # extract the predict_proba-capable object one more time at inference time.
-    if isinstance(bilstm, dict):
-        bilstm = (
-            bilstm.get('model') or
-            bilstm.get('bilstm') or
-            bilstm.get('wrapper') or
-            bilstm.get('classifier') or
-            next((v for v in bilstm.values()
-                  if hasattr(v, 'predict_proba')), None)
-        )
-    if bilstm is None or not hasattr(bilstm, 'predict_proba'):
-        # Last resort: check meta_encoders_dict
-        meta_dict = models.get('meta_encoders_dict') or {}
-        bilstm = next(
-            (v for v in meta_dict.values() if hasattr(v, 'predict_proba')), None
-        )
-    if bilstm is None:
-        raise ValueError(
-            "BiLSTM wrapper with predict_proba not found in loaded joblib files. "
-            f"bilstm_model type={type(models['bilstm_model'])}, "
-            f"meta_encoders_dict keys={list((models.get('meta_encoders_dict') or {}).keys())}"
-        )
+
 
     # Step 1 & 2 — CLS embedding
     inputs = tokenizer(
@@ -444,14 +409,9 @@ def get_bilstm_probs(text, models, max_length=256):
         outputs = bert_model(**inputs)
     cls_emb = outputs.last_hidden_state[:, 0, :].numpy()   # (1, hidden_size)
 
-    # Step 3 — encode / project via meta_encoders if available
-    if meta_enc is not None:
-        if hasattr(meta_enc, 'transform'):
-            cls_emb = meta_enc.transform(cls_emb)
-        elif isinstance(meta_enc, (list, tuple)):
-            for enc in meta_enc:
-                if hasattr(enc, 'transform'):
-                    cls_emb = enc.transform(cls_emb)
+    # Step 3 — z-score normalise with the saved StandardScaler
+    if meta_scaler is not None and hasattr(meta_scaler, 'transform'):
+        cls_emb = meta_scaler.transform(cls_emb)            # (1, hidden_size)
 
     # Step 4 — BiLSTM softmax probs
     probs = bilstm.predict_proba(cls_emb)   # (1, 6)
