@@ -1,13 +1,12 @@
 import streamlit as st
+from transformers import AutoTokenizer, AutoModelForSequenceClassification, AutoModelForSeq2SeqLM
+import joblib
 import torch
 import numpy as np
-import joblib
 import re
-from transformers import AutoTokenizer, AutoModelForSequenceClassification, AutoModel
-from huggingface_hub import hf_hub_download
 
 # -----------------------------------------
-# Page config
+# Streamlit Page Settings
 # -----------------------------------------
 st.set_page_config(
     page_title="بَيِّنْ - مصنف وتبسيط النصوص العربية",
@@ -16,7 +15,7 @@ st.set_page_config(
 )
 
 # -----------------------------------------
-# Arabic normalization
+# Arabic text normalization
 # -----------------------------------------
 ARABIC_DIACRITICS = re.compile(r"[\u0617-\u061A\u064B-\u0652]")
 
@@ -28,132 +27,178 @@ def normalize_ar(text):
     text = re.sub(r"[ؤئ]", "ء", text)
     text = re.sub(r"ة", "ه", text)
     text = re.sub(r"[^\w\s]", " ", text)
-    return re.sub(r"\s+", " ", text).strip()
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
 
 # -----------------------------------------
-# Load models
+# Load Models
 # -----------------------------------------
 @st.cache_resource
-def load_models():
-    models = {}
-
-    # AraBERT
-    models['arabert_tokenizer'] = AutoTokenizer.from_pretrained("aubmindlab/bert-base-arabertv2")
-    models['arabert_model'] = AutoModelForSequenceClassification.from_pretrained("SarahAlhalees/Arabertv2_D3Tok")
-
-    # CAMeLBERT MSA
-    models['camel_tokenizer'] = AutoTokenizer.from_pretrained("SarahAlhalees/CAMeLBERTmsa_D3Tok")
-    models['camel_model'] = AutoModelForSequenceClassification.from_pretrained("SarahAlhalees/CAMeLBERTmsa_D3Tok")
-
-    # BiLSTM (expects embeddings)
-    bilstm_path = hf_hub_download(
-        repo_id="Raya-y/Bayyin_models",
-        filename="bilstm_arabert_bayyin.joblib"
+def load_classification_model():
+    """Load the classification model (joblib)"""
+    # Option 1: If using joblib model from HuggingFace
+    from huggingface_hub import hf_hub_download
+    model_path = hf_hub_download(
+        repo_id="SarahAlhalees/ensemble",  # Your classifier repo
+        filename="meta_svm_tuned.joblib"  # Your joblib model file
     )
-    models['bilstm'] = joblib.load(bilstm_path)
+    classifier = joblib.load(model_path)
+    return classifier
 
-    models['bilstm_tokenizer'] = AutoTokenizer.from_pretrained("aubmindlab/bert-base-arabertv2")
-    models['bilstm_bert'] = AutoModel.from_pretrained("aubmindlab/bert-base-arabertv2")
+@st.cache_resource
+def load_simplification_model():
+    """Load the text simplification model (generative)"""
+    repo_id = "SarahAlhalees/bassit-simplifier"  # Your simplification model repo
+    tokenizer = AutoTokenizer.from_pretrained(repo_id)
+    model = AutoModelForSeq2SeqLM.from_pretrained(repo_id)
+    return tokenizer, model
 
-    # Meta learner
-    meta_path = hf_hub_download(
-        repo_id="SarahAlhalees/ensemble",
-        filename="meta_svm_tuned.joblib"
-    )
-    models['meta'] = joblib.load(meta_path)
-
-    # OPTIONAL scaler (only if you saved it separately)
-    try:
-        scaler_path = hf_hub_download(
-            repo_id="SarahAlhalees/ensemble",
-            filename="scaler.joblib"
-        )
-        models['scaler'] = joblib.load(scaler_path)
-    except:
-        models['scaler'] = None
-
-    return models
-
-models = load_models()
+# Load models
+try:
+    classifier = load_classification_model()
+    simplifier_tokenizer, simplifier_model = load_simplification_model()
+    models_loaded = True
+except Exception as e:
+    st.error(f"خطأ في تحميل النماذج: {str(e)}")
+    models_loaded = False
 
 # -----------------------------------------
-# Helper: get probabilities from transformer
+# UI Layout
 # -----------------------------------------
-def get_probs(model, tokenizer, text):
-    inputs = tokenizer(text, return_tensors="pt", truncation=True, padding=True, max_length=256)
-    with torch.no_grad():
-        logits = model(**inputs).logits
-    probs = torch.softmax(logits, dim=-1).cpu().numpy()[0]
-    return probs  # shape (6,)
+st.markdown("""
+    <h1 style='text-align: center; direction: rtl;'>بَيِّنْ</h1>
+    <h3 style='text-align: center; direction: rtl;'>مصنف وتبسيط النصوص العربية</h3>
+""", unsafe_allow_html=True)
+
+st.markdown("---")
+
+# Input text
+text = st.text_area(
+    label="",
+    height=200,
+    placeholder="اكتب أو الصق النص هنا...",
+    key="arabic_input"
+)
+
+# Add RTL styling
+st.markdown("""
+    <style>
+    textarea {
+        direction: rtl;
+        text-align: right;
+        font-size: 16px;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
+# Initialize session state for storing results
+if 'classification_done' not in st.session_state:
+    st.session_state.classification_done = False
+if 'readability_level' not in st.session_state:
+    st.session_state.readability_level = 0
+if 'confidence' not in st.session_state:
+    st.session_state.confidence = 0.0
+if 'original_text' not in st.session_state:
+    st.session_state.original_text = ""
 
 # -----------------------------------------
-# Helper: BiLSTM probabilities
+# Classification Button: "بَيِّنْ"
 # -----------------------------------------
-def get_bilstm_probs(model, tokenizer, bert_model, text):
-    inputs = tokenizer(text, return_tensors="pt", truncation=True, padding=True, max_length=256)
-    with torch.no_grad():
-        outputs = bert_model(**inputs, output_hidden_states=True)
-        embeddings = outputs.hidden_states[-1].mean(dim=1)
-
-    probs = model.predict_proba(embeddings.numpy())[0]  # (6,)
-    return probs
-
-# -----------------------------------------
-# UI
-# -----------------------------------------
-st.title("بَيِّنْ")
-st.write("تصنيف مستوى قراءة النصوص العربية باستخدام نموذج تجميعي (Ensemble)")
-
-text = st.text_area("أدخل النص", height=200)
-
-# -----------------------------------------
-# Prediction
-# -----------------------------------------
-if st.button("📊 بَيِّنْ"):
-
+if st.button("📊 بَيِّنْ", use_container_width=True, type="primary"):
     if not text.strip():
-        st.warning("⚠️ أدخل نص أولاً")
+        st.warning("⚠️ الرجاء إدخال نص.")
+    elif not models_loaded:
+        st.error("⚠️ لم يتم تحميل النماذج بشكل صحيح.")
     else:
-        cleaned = normalize_ar(text)
-
         with st.spinner("جاري التحليل..."):
-
-            # 1) Base model probabilities
-            p_arabert = get_probs(models['arabert_model'], models['arabert_tokenizer'], cleaned)
-            p_camel = get_probs(models['camel_model'], models['camel_tokenizer'], cleaned)
-            p_bilstm = get_bilstm_probs(
-                models['bilstm'],
-                models['bilstm_tokenizer'],
-                models['bilstm_bert'],
-                cleaned
-            )
-
-            # 2) Build 18-dim vector
-            meta_input = np.concatenate([p_arabert, p_camel, p_bilstm]).reshape(1, -1)
-
-            # 3) Scale if needed
-            if models['scaler'] is not None:
-                meta_input = models['scaler'].transform(meta_input)
-
-            # 4) Final prediction
-            prediction = models['meta'].predict(meta_input)[0]
-
+            # Normalize text
+            cleaned = normalize_ar(text)
+            
+            # Classify using joblib model
+            # Adjust this based on your model's input format
+            prediction = classifier.predict([cleaned])[0]
+            
+            # If your model outputs probabilities
             try:
-                probs = models['meta'].predict_proba(meta_input)[0]
+                probs = classifier.predict_proba([cleaned])[0]
                 confidence = np.max(probs)
             except:
-                confidence = None
+                confidence = 1.0
+            
+            # Store in session state
+            st.session_state.classification_done = True
+            st.session_state.readability_level = prediction
+            st.session_state.confidence = confidence
+            st.session_state.original_text = text
 
-        # -----------------------------------------
-        # Display
-        # -----------------------------------------
-        level_names = {
-            1: "سهل جداً", 2: "سهل", 3: "متوسط",
-            4: "صعب قليلاً", 5: "صعب", 6: "صعب جداً"
-        }
+# -----------------------------------------
+# Display Classification Results
+# -----------------------------------------
+if st.session_state.classification_done:
+    st.markdown("---")
+    st.subheader("📊 نتيجة التصنيف")
+    
+    level = st.session_state.readability_level
+    
+    # Level display with color coding
+    level_colors = {1: "🟢", 2: "🟢", 3: "🟡", 4: "🟡", 5: "🔴", 6: "🔴"}
+    level_names = {
+        1: "سهل جداً", 2: "سهل", 3: "متوسط", 
+        4: "صعب قليلاً", 5: "صعب", 6: "صعب جداً"
+    }
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        st.metric(label="المستوى", value=f"{level_colors.get(level, '⚪')} {level}")
+    with col2:
+        st.metric(label="الوصف", value=level_names.get(level, "غير معروف"))
+    
+    st.progress(int(st.session_state.confidence * 100))
+    st.write(f"**نسبة الثقة:** {st.session_state.confidence:.2%}")
+    
+    # -----------------------------------------
+    # Simplification Button: "بَسِّطْ" (only for levels 4-6)
+    # -----------------------------------------
+    if level >= 4:
+        st.markdown("---")
+        st.info("💡 هذا النص صعب القراءة. يمكنك تبسيطه بالضغط على الزر أدناه.")
+        
+        if st.button("✨ بَسِّطْ", use_container_width=True, type="secondary"):
+            with st.spinner("جاري التبسيط..."):
+                # Normalize text for simplification
+                cleaned = normalize_ar(st.session_state.original_text)
+                
+                # Tokenize for simplification model
+                inputs = simplifier_tokenizer(
+                    cleaned,
+                    return_tensors="pt",
+                    truncation=True,
+                    padding=True,
+                    max_length=512
+                )
+                
+                # Generate simplified text
+                with torch.no_grad():
+                    outputs = simplifier_model.generate(
+                        **inputs,
+                        max_length=512,
+                        num_beams=5,
+                        early_stopping=True
+                    )
+                
+                simplified_text = simplifier_tokenizer.decode(outputs[0], skip_special_tokens=True)
+                
+                # Display simplified text
+                st.markdown("---")
+                st.subheader("✨ النص المبسط")
+                st.markdown(f"""
+                    <div style='background-color: #1e3a2e; padding: 20px; border-radius: 10px; 
+                                direction: rtl; text-align: right; color: #ffffff; 
+                                border-right: 4px solid #4ade80;'>
+                        {simplified_text}
+                    </div>
+                """, unsafe_allow_html=True)
 
-        st.success(f"📊 المستوى: {prediction}")
-        st.write(f"الوصف: {level_names.get(prediction, '')}")
-
-        if confidence:
-            st.write(f"نسبة الثقة: {confidence:.2%}")
+# Footer
+st.markdown("---")
+st.caption("© 2025 — مشروع بَيِّنْ")
