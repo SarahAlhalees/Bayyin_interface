@@ -203,11 +203,11 @@ def load_base_models():
         # Try flat repo layout first, then subfolder layout as fallback.
         try:
             models['arabert_tokenizer'] = AutoTokenizer.from_pretrained(
-                "SarahAlhalees/Arabertv2_D3Tok",
+                "SarahAlhalees/AraBERTv2_RefinedBayyink",
                 use_fast=False
             )
             models['arabert_model'] = AutoModelForSequenceClassification.from_pretrained(
-                "SarahAlhalees/Arabertv2_D3Tok"
+                "SarahAlhalees/AraBERTv2_RefinedBayyin"
             )
         except Exception:
             models['arabert_tokenizer'] = AutoTokenizer.from_pretrained(
@@ -229,11 +229,11 @@ def load_base_models():
     # CamelBERT also uses WordPiece / SentencePiece; use_fast=False is safe here.
     try:
         models['camelbert_tokenizer'] = AutoTokenizer.from_pretrained(
-            "SarahAlhalees/CAMeLBERTmsa_D3Tok",
+            "SarahAlhalees/CamelBERTmsa_RefinedBayyin",
             use_fast=False
         )
         models['camelbert_model'] = AutoModelForSequenceClassification.from_pretrained(
-            "SarahAlhalees/CAMeLBERTmsa_D3Tok"
+            "SarahAlhalees/CamelBERTmsa_RefinedBayyin"
         )
         models['camelbert_model'].eval()
     except Exception as e:
