@@ -1,3 +1,13 @@
+import os
+import warnings
+import logging
+ 
+# Suppress transformers __path__ scanning noise and deprecation warnings
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+os.environ["TRANSFORMERS_NO_ADVISORY_WARNINGS"] = "1"
+warnings.filterwarnings("ignore")
+logging.getLogger("transformers").setLevel(logging.ERROR)
+logging.getLogger("huggingface_hub").setLevel(logging.ERROR)
 import streamlit as st
 from transformers import AutoTokenizer, AutoModelForSequenceClassification, BertForSequenceClassification, AutoModel
 import torch
