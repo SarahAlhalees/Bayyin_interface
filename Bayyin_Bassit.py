@@ -1,3 +1,15 @@
+import os
+import warnings
+import logging
+import sys
+import types
+# Suppress transformers __path__ scanning noise and deprecation warnings
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+os.environ["TRANSFORMERS_NO_ADVISORY_WARNINGS"] = "1"
+warnings.filterwarnings("ignore")
+logging.getLogger("transformers").setLevel(logging.ERROR)
+logging.getLogger("huggingface_hub").setLevel(logging.ERROR)
+
 import streamlit as st
 from transformers import AutoTokenizer, AutoModelForSequenceClassification, AutoModelForSeq2SeqLM, AutoModel
 import torch
@@ -6,8 +18,7 @@ import numpy as np
 import re
 import joblib
 from huggingface_hub import hf_hub_download
-import sys
-import types
+
 
 # -----------------------------------------
 # BiLSTM Model Class Definition (MUST BE BEFORE LOADING)
