@@ -224,6 +224,55 @@ def load_base_models():
         models['bilstm_model']   = joblib.load(bilstm_path)
         models['meta_encoders']  = joblib.load(meta_enc_path)
 
+        # best_bilstm_camelbert.joblib may be a dict containing the wrapper
+        # and/or encoders. Unwrap gracefully.
+        bilstm_raw = joblib.load(bilstm_path)
+        if isinstance(bilstm_raw, dict):
+            # Common key names the training script might have used
+            bilstm_wrapper = (
+                bilstm_raw.get('model') or
+                bilstm_raw.get('bilstm') or
+                bilstm_raw.get('wrapper') or
+                bilstm_raw.get('classifier') or
+                next((v for v in bilstm_raw.values()
+                      if hasattr(v, 'predict_proba')), None)
+            )
+            models['bilstm_model'] = bilstm_wrapper
+            # Log available keys to help debug if still None
+            if bilstm_wrapper is None:
+                st.warning(f"BiLSTM joblib keys: {list(bilstm_raw.keys())}")
+        else:
+            models['bilstm_model'] = bilstm_raw
+ 
+        # meta_encoders.joblib may also be a dict
+        meta_raw = joblib.load(meta_enc_path)
+        if isinstance(meta_raw, dict):
+            # Try to find an encoder/scaler/pipeline inside the dict
+            # Also check if the BiLSTM model is stored here instead
+            if models['bilstm_model'] is None:
+                models['bilstm_model'] = (
+                    meta_raw.get('model') or
+                    meta_raw.get('bilstm') or
+                    meta_raw.get('wrapper') or
+                    meta_raw.get('classifier') or
+                    next((v for v in meta_raw.values()
+                          if hasattr(v, 'predict_proba')), None)
+                )
+            encoder = (
+                meta_raw.get('encoder') or
+                meta_raw.get('scaler') or
+                meta_raw.get('label_encoder') or
+                meta_raw.get('pca') or
+                meta_raw.get('pipeline') or
+                next((v for v in meta_raw.values()
+                      if hasattr(v, 'transform')), None)
+            )
+            models['meta_encoders'] = encoder
+            models['meta_encoders_dict'] = meta_raw  # keep full dict for debug
+        else:
+            models['meta_encoders'] = meta_raw
+            models['meta_encoders_dict'] = None
+
         # CamelBERT-MSA base (no classification head) — supplies token embeddings
         # that meta_encoders then projects before passing to BiLSTMWrapper
         models['bilstm_tokenizer'] = AutoTokenizer.from_pretrained(
@@ -299,21 +348,45 @@ def get_softmax_probs_from_classifier(text, tokenizer, clf_model, max_length=256
 def get_bilstm_probs(text, models, max_length=256):
     """
     Get 6-class softmax probabilities from the BiLSTM+CamelBERT-MSA base model.
-
+ 
     Pipeline (matches paper Stage 1 BiLSTM branch):
       1. Tokenise with CamelBERT-MSA tokenizer.
       2. Extract CLS token embedding from the CamelBERT-MSA base model.
       3. Apply meta_encoders (sklearn scaler / PCA / pipeline) to project the
          CLS embedding into the space the BiLSTMWrapper was trained on.
       4. Call BiLSTMWrapper.predict_proba() → (1, 6) softmax probs.
-
+ 
     Shape returned: (1, 6)
     """
-    tokenizer   = models['bilstm_tokenizer']
-    bert_model  = models['bilstm_bert']
-    bilstm      = models['bilstm_model']
-    meta_enc    = models['meta_encoders']
-
+    tokenizer  = models['bilstm_tokenizer']
+    bert_model = models['bilstm_bert']
+    bilstm     = models['bilstm_model']
+    meta_enc   = models['meta_encoders']
+ 
+    # Safety check — if loading produced a dict instead of a wrapper, try to
+    # extract the predict_proba-capable object one more time at inference time.
+    if isinstance(bilstm, dict):
+        bilstm = (
+            bilstm.get('model') or
+            bilstm.get('bilstm') or
+            bilstm.get('wrapper') or
+            bilstm.get('classifier') or
+            next((v for v in bilstm.values()
+                  if hasattr(v, 'predict_proba')), None)
+        )
+    if bilstm is None or not hasattr(bilstm, 'predict_proba'):
+        # Last resort: check meta_encoders_dict
+        meta_dict = models.get('meta_encoders_dict') or {}
+        bilstm = next(
+            (v for v in meta_dict.values() if hasattr(v, 'predict_proba')), None
+        )
+    if bilstm is None:
+        raise ValueError(
+            "BiLSTM wrapper with predict_proba not found in loaded joblib files. "
+            f"bilstm_model type={type(models['bilstm_model'])}, "
+            f"meta_encoders_dict keys={list((models.get('meta_encoders_dict') or {}).keys())}"
+        )
+ 
     # Step 1 & 2 — CLS embedding
     inputs = tokenizer(
         text,
@@ -325,8 +398,8 @@ def get_bilstm_probs(text, models, max_length=256):
     with torch.no_grad():
         outputs = bert_model(**inputs)
     cls_emb = outputs.last_hidden_state[:, 0, :].numpy()   # (1, hidden_size)
-
-    # Step 3 — encode / project
+ 
+    # Step 3 — encode / project via meta_encoders if available
     if meta_enc is not None:
         if hasattr(meta_enc, 'transform'):
             cls_emb = meta_enc.transform(cls_emb)
@@ -334,10 +407,11 @@ def get_bilstm_probs(text, models, max_length=256):
             for enc in meta_enc:
                 if hasattr(enc, 'transform'):
                     cls_emb = enc.transform(cls_emb)
-
+ 
     # Step 4 — BiLSTM softmax probs
     probs = bilstm.predict_proba(cls_emb)   # (1, 6)
     return probs
+ 
 
 
 def get_model_probabilities(text, models):
