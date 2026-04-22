@@ -3,6 +3,7 @@ import warnings
 import logging
 import sys
 import types
+
 # Suppress transformers __path__ scanning noise and deprecation warnings
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 os.environ["TRANSFORMERS_NO_ADVISORY_WARNINGS"] = "1"
@@ -18,7 +19,6 @@ import numpy as np
 import re
 import joblib
 from huggingface_hub import hf_hub_download
-
 
 # -----------------------------------------
 # BiLSTM Model Class Definition (MUST BE BEFORE LOADING)
@@ -203,20 +203,20 @@ def load_base_models():
         # Try flat repo layout first, then subfolder layout as fallback.
         try:
             models['arabert_tokenizer'] = AutoTokenizer.from_pretrained(
-                "SarahAlhalees/AraBERTv2_RefinedBayyin",
+                "SarahAlhalees/Arabertv2_D3Tok",
                 use_fast=False
             )
             models['arabert_model'] = AutoModelForSequenceClassification.from_pretrained(
-                "SarahAlhalees/AraBERTv2_RefinedBayyin"
+                "SarahAlhalees/Arabertv2_D3Tok"
             )
         except Exception:
             models['arabert_tokenizer'] = AutoTokenizer.from_pretrained(
-                "SarahAlhalees/AraBERTv2_RefinedBayyin",
+                "SarahAlhalees/Arabertv2_D3Tok",
                 subfolder="Arabertv2_D3Tok",
                 use_fast=False
             )
             models['arabert_model'] = AutoModelForSequenceClassification.from_pretrained(
-                "SarahAlhalees/AraBERTv2_RefinedBayyin",
+                "SarahAlhalees/Arabertv2_D3Tok",
                 subfolder="Arabertv2_D3Tok"
             )
         models['arabert_model'].eval()
@@ -229,11 +229,11 @@ def load_base_models():
     # CamelBERT also uses WordPiece / SentencePiece; use_fast=False is safe here.
     try:
         models['camelbert_tokenizer'] = AutoTokenizer.from_pretrained(
-            "SarahAlhalees/CamelBERTmsa_RefinedBayyin",
+            "SarahAlhalees/CAMeLBERTmsa_D3Tok",
             use_fast=False
         )
         models['camelbert_model'] = AutoModelForSequenceClassification.from_pretrained(
-            "SarahAlhalees/CamelBERTmsa_RefinedBayyin"
+            "SarahAlhalees/CAMeLBERTmsa_D3Tok"
         )
         models['camelbert_model'].eval()
     except Exception as e:
@@ -252,54 +252,43 @@ def load_base_models():
             filename="meta_encoders.joblib"
         )
 
-        # best_bilstm_camelbert.joblib may be a dict containing the wrapper
-        # and/or encoders. Unwrap gracefully.
+        # best_bilstm_camelbert.joblib is a dict with keys:
+        # 'model_state', 'val_acc', 'epoch', 'cat_card', 'text_col', 'config'
+        # We must reconstruct the BiLSTMWithMeta model from these components.
         bilstm_raw = joblib.load(bilstm_path)
-        if isinstance(bilstm_raw, dict):
-            # Common key names the training script might have used
-            bilstm_wrapper = (
-                bilstm_raw.get('model') or
-                bilstm_raw.get('bilstm') or
-                bilstm_raw.get('wrapper') or
-                bilstm_raw.get('classifier') or
-                next((v for v in bilstm_raw.values()
-                      if hasattr(v, 'predict_proba')), None)
-            )
-            models['bilstm_model'] = bilstm_wrapper
-            # Log available keys to help debug if still None
-            if bilstm_wrapper is None:
-                st.warning(f"BiLSTM joblib keys: {list(bilstm_raw.keys())}")
-        else:
-            models['bilstm_model'] = bilstm_raw
 
-        # meta_encoders.joblib may also be a dict
+        config        = bilstm_raw['config']        # dict of model hyperparams
+        cat_card      = bilstm_raw['cat_card']       # categorical cardinalities dict
+        model_state   = bilstm_raw['model_state']    # nn.Module state_dict
+
+        # Reconstruct model architecture from saved config
+        bilstm_nn = BiLSTMWithMeta(
+            input_dim               = config.get('input_dim', 768),
+            categorical_cardinalities = cat_card,
+            num_numeric             = config.get('num_numeric', 0),
+            lstm_hidden             = config.get('lstm_hidden', 256),
+            meta_proj_dim           = config.get('meta_proj_dim', 128),
+            num_classes             = config.get('num_classes', 6),
+            dropout                 = config.get('dropout', 0.3),
+        )
+        bilstm_nn.load_state_dict(model_state)
+        bilstm_nn.eval()
+
+        # Wrap in BiLSTMWrapper so predict_proba works
+        models['bilstm_model'] = BiLSTMWrapper(
+            model              = bilstm_nn,
+            cat_cardinalities  = cat_card,
+            num_numeric        = config.get('num_numeric', 0),
+            num_classes        = config.get('num_classes', 6),
+        )
+        models['bilstm_raw']   = bilstm_raw   # keep for debug
+
+        # meta_encoders.joblib is a dict with keys:
+        # 'meta_scaler' (StandardScaler) and 'label_encoders'
         meta_raw = joblib.load(meta_enc_path)
-        if isinstance(meta_raw, dict):
-            # Try to find an encoder/scaler/pipeline inside the dict
-            # Also check if the BiLSTM model is stored here instead
-            if models['bilstm_model'] is None:
-                models['bilstm_model'] = (
-                    meta_raw.get('model') or
-                    meta_raw.get('bilstm') or
-                    meta_raw.get('wrapper') or
-                    meta_raw.get('classifier') or
-                    next((v for v in meta_raw.values()
-                          if hasattr(v, 'predict_proba')), None)
-                )
-            encoder = (
-                meta_raw.get('encoder') or
-                meta_raw.get('scaler') or
-                meta_raw.get('label_encoder') or
-                meta_raw.get('pca') or
-                meta_raw.get('pipeline') or
-                next((v for v in meta_raw.values()
-                      if hasattr(v, 'transform')), None)
-            )
-            models['meta_encoders'] = encoder
-            models['meta_encoders_dict'] = meta_raw  # keep full dict for debug
-        else:
-            models['meta_encoders'] = meta_raw
-            models['meta_encoders_dict'] = None
+        models['meta_encoders']      = meta_raw.get('meta_scaler')   # StandardScaler
+        models['label_encoders']     = meta_raw.get('label_encoders')
+        models['meta_encoders_dict'] = meta_raw
 
         # CamelBERT-MSA base (no classification head) — supplies CLS embeddings
         # that meta_encoders projects before passing to BiLSTMWrapper.
@@ -354,7 +343,14 @@ base_models = load_base_models()
 meta_learner = load_meta_learner()
 simplifier_tokenizer, simplifier_model = load_simplification_model()
 
-
+# --- Debug expander: shows loaded model status ---
+with st.expander("🔧 تشخيص تحميل النماذج", expanded=False):
+    st.write(f"**arabert loaded:** `{base_models.get('arabert_model') is not None}`")
+    st.write(f"**camelbert loaded:** `{base_models.get('camelbert_model') is not None}`")
+    st.write(f"**bilstm_model type:** `{type(base_models.get('bilstm_model'))}`")
+    st.write(f"**meta_scaler type:** `{type(base_models.get('meta_encoders'))}`")
+    st.write(f"**label_encoders:** `{type(base_models.get('label_encoders'))}`")
+    st.write(f"**meta_learner loaded:** `{meta_learner is not None}`")
 
 # -----------------------------------------
 # Feature Extraction
@@ -381,23 +377,20 @@ def get_bilstm_probs(text, models, max_length=256):
     """
     Get 6-class softmax probabilities from the BiLSTM+CamelBERT-MSA base model.
 
-    Pipeline (matches paper Stage 1 BiLSTM branch):
+    Pipeline:
       1. Tokenise with CamelBERT-MSA tokenizer.
       2. Extract CLS token embedding from the CamelBERT-MSA base model.
-      3. Apply meta_encoders (sklearn scaler / PCA / pipeline) to project the
-         CLS embedding into the space the BiLSTMWrapper was trained on.
+      3. Apply meta_scaler (StandardScaler) to normalise the CLS embedding.
       4. Call BiLSTMWrapper.predict_proba() → (1, 6) softmax probs.
 
     Shape returned: (1, 6)
     """
-    tokenizer  = models['bilstm_tokenizer']
-    bert_model = models['bilstm_bert']
-    bilstm     = models['bilstm_model']
-    meta_enc   = models['meta_encoders']
+    tokenizer   = models['bilstm_tokenizer']
+    bert_model  = models['bilstm_bert']
+    bilstm      = models['bilstm_model']       # BiLSTMWrapper
+    meta_scaler = models['meta_encoders']      # StandardScaler or None
 
-
-
-    # Step 1 & 2 — CLS embedding
+    # Step 1 & 2 — extract CLS token embedding
     inputs = tokenizer(
         text,
         return_tensors="pt",
@@ -414,7 +407,7 @@ def get_bilstm_probs(text, models, max_length=256):
         cls_emb = meta_scaler.transform(cls_emb)            # (1, hidden_size)
 
     # Step 4 — BiLSTM softmax probs
-    probs = bilstm.predict_proba(cls_emb)   # (1, 6)
+    probs = bilstm.predict_proba(cls_emb)                   # (1, 6)
     return probs
 
 
