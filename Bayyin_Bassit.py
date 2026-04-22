@@ -203,7 +203,7 @@ def load_base_models():
         # Try flat repo layout first, then subfolder layout as fallback.
         try:
             models['arabert_tokenizer'] = AutoTokenizer.from_pretrained(
-                "SarahAlhalees/AraBERTv2_RefinedBayyink",
+                "SarahAlhalees/AraBERTv2_RefinedBayyin",
                 use_fast=False
             )
             models['arabert_model'] = AutoModelForSequenceClassification.from_pretrained(
@@ -252,41 +252,76 @@ def load_base_models():
             filename="meta_encoders.joblib"
         )
 
-        # best_bilstm_camelbert.joblib is a dict with keys:
+        # best_bilstm_camelbert.joblib keys:
         # 'model_state', 'val_acc', 'epoch', 'cat_card', 'text_col', 'config'
-        # We must reconstruct the BiLSTMWithMeta model from these components.
-        bilstm_raw = joblib.load(bilstm_path)
+        bilstm_raw  = joblib.load(bilstm_path)
+        config      = bilstm_raw['config']       # model hyperparams
+        cat_card    = bilstm_raw['cat_card']     # categorical cardinalities dict
+        model_state = bilstm_raw['model_state']  # nn.Module state_dict
 
-        config        = bilstm_raw['config']        # dict of model hyperparams
-        cat_card      = bilstm_raw['cat_card']       # categorical cardinalities dict
-        model_state   = bilstm_raw['model_state']    # nn.Module state_dict
-
-        # Reconstruct model architecture from saved config
-        bilstm_nn = BiLSTMWithMeta(
-            input_dim               = config.get('input_dim', 768),
-            categorical_cardinalities = cat_card,
-            num_numeric             = config.get('num_numeric', 0),
-            lstm_hidden             = config.get('lstm_hidden', 256),
-            meta_proj_dim           = config.get('meta_proj_dim', 128),
-            num_classes             = config.get('num_classes', 6),
-            dropout                 = config.get('dropout', 0.3),
+        # Infer num_numeric from state_dict if not in config:
+        # meta_proj linear weight shape = (meta_proj_dim, num_cat_emb + num_numeric)
+        total_cat_emb = sum(
+            min(50, max(4, int(card**0.5)))
+            for card in (cat_card.values() if isinstance(cat_card, dict) else [])
         )
-        bilstm_nn.load_state_dict(model_state)
+        # Try to read meta_proj input dim from state_dict
+        meta_proj_weight = model_state.get('meta_proj.0.weight')
+        if meta_proj_weight is not None:
+            meta_proj_in = meta_proj_weight.shape[1]
+            num_numeric  = meta_proj_in - total_cat_emb
+        else:
+            num_numeric  = config.get('num_numeric', 0) if isinstance(config, dict) else 0
+
+        # Read remaining dims from config or state_dict
+        if isinstance(config, dict):
+            input_dim     = config.get('input_dim',     768)
+            lstm_hidden   = config.get('lstm_hidden',   256)
+            meta_proj_dim = config.get('meta_proj_dim', 128)
+            num_classes   = config.get('num_classes',   6)
+            dropout       = config.get('dropout',       0.3)
+        else:
+            # config might be a namespace or non-dict object
+            input_dim     = getattr(config, 'input_dim',     768)
+            lstm_hidden   = getattr(config, 'lstm_hidden',   256)
+            meta_proj_dim = getattr(config, 'meta_proj_dim', 128)
+            num_classes   = getattr(config, 'num_classes',   6)
+            dropout       = getattr(config, 'dropout',       0.3)
+
+        # Infer lstm_hidden from state_dict if needed
+        lstm_weight = model_state.get('lstm.weight_hh_l0')
+        if lstm_weight is not None:
+            lstm_hidden = lstm_weight.shape[1]  # hidden_size
+
+        # Infer input_dim from state_dict
+        lstm_input_weight = model_state.get('lstm.weight_ih_l0')
+        if lstm_input_weight is not None:
+            input_dim = lstm_input_weight.shape[1]
+
+        # Reconstruct BiLSTMWithMeta from saved weights
+        bilstm_nn = BiLSTMWithMeta(
+            input_dim                 = input_dim,
+            categorical_cardinalities = cat_card if isinstance(cat_card, dict) else {},
+            num_numeric               = num_numeric,
+            lstm_hidden               = lstm_hidden,
+            meta_proj_dim             = meta_proj_dim,
+            num_classes               = num_classes,
+            dropout                   = dropout,
+        )
+        bilstm_nn.load_state_dict(model_state, strict=False)
         bilstm_nn.eval()
 
-        # Wrap in BiLSTMWrapper so predict_proba works
         models['bilstm_model'] = BiLSTMWrapper(
-            model              = bilstm_nn,
-            cat_cardinalities  = cat_card,
-            num_numeric        = config.get('num_numeric', 0),
-            num_classes        = config.get('num_classes', 6),
+            model             = bilstm_nn,
+            cat_cardinalities = cat_card if isinstance(cat_card, dict) else {},
+            num_numeric       = num_numeric,
+            num_classes       = num_classes,
         )
-        models['bilstm_raw']   = bilstm_raw   # keep for debug
+        models['bilstm_raw'] = bilstm_raw
 
-        # meta_encoders.joblib is a dict with keys:
-        # 'meta_scaler' (StandardScaler) and 'label_encoders'
+        # meta_encoders.joblib keys: 'meta_scaler', 'label_encoders'
         meta_raw = joblib.load(meta_enc_path)
-        models['meta_encoders']      = meta_raw.get('meta_scaler')   # StandardScaler
+        models['meta_encoders']      = meta_raw.get('meta_scaler')
         models['label_encoders']     = meta_raw.get('label_encoders')
         models['meta_encoders_dict'] = meta_raw
 
@@ -338,10 +373,34 @@ def load_simplification_model():
         return None, None
 
 
-# Load all models at startup
-base_models = load_base_models()
-meta_learner = load_meta_learner()
-simplifier_tokenizer, simplifier_model = load_simplification_model()
+# Load all models at startup — catch any crash and show it in the UI
+_load_error = None
+try:
+    base_models = load_base_models()
+except Exception as _e:
+    _load_error = f"load_base_models failed:\n{type(_e).__name__}: {_e}"
+    import traceback as _tb
+    _load_error += "\n\n" + _tb.format_exc()
+    base_models = {}
+
+try:
+    meta_learner = load_meta_learner()
+except Exception as _e:
+    if _load_error is None:
+        _load_error = ""
+    import traceback as _tb
+    _load_error += f"\nload_meta_learner failed: {type(_e).__name__}: {_e}\n{_tb.format_exc()}"
+    meta_learner = None
+
+try:
+    simplifier_tokenizer, simplifier_model = load_simplification_model()
+except Exception as _e:
+    simplifier_tokenizer, simplifier_model = None, None
+
+if _load_error:
+    st.error("🚨 خطأ أثناء تحميل النماذج — تفاصيل للمطور:")
+    st.code(_load_error, language="python")
+    st.stop()
 
 # --- Debug expander: shows loaded model status ---
 with st.expander("🔧 تشخيص تحميل النماذج", expanded=False):
@@ -351,6 +410,11 @@ with st.expander("🔧 تشخيص تحميل النماذج", expanded=False):
     st.write(f"**meta_scaler type:** `{type(base_models.get('meta_encoders'))}`")
     st.write(f"**label_encoders:** `{type(base_models.get('label_encoders'))}`")
     st.write(f"**meta_learner loaded:** `{meta_learner is not None}`")
+    raw = base_models.get('bilstm_raw') or {}
+    if raw:
+        cfg = raw.get('config', {})
+        st.write(f"**config:** `{cfg}`")
+        st.write(f"**cat_card keys:** `{list(raw.get('cat_card', {}).keys())}`")
 
 # -----------------------------------------
 # Feature Extraction
@@ -498,7 +562,8 @@ st.markdown("""
 st.markdown("---")
 
 text = st.text_area(
-    label="",
+    label="أدخل النص العربي",
+    label_visibility="collapsed",
     height=200,
     placeholder="اكتب أو الصق النص هنا...",
     key="arabic_input"
