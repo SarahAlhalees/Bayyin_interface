@@ -10,6 +10,8 @@ os.environ["TRANSFORMERS_NO_ADVISORY_WARNINGS"] = "1"
 warnings.filterwarnings("ignore")
 logging.getLogger("transformers").setLevel(logging.ERROR)
 logging.getLogger("huggingface_hub").setLevel(logging.ERROR)
+logging.disable(logging.WARNING)  # nuclear option, or:
+logging.getLogger("transformers.image_processing_utils").setLevel(logging.ERROR)
 
 import streamlit as st
 from transformers import AutoTokenizer, AutoModelForSequenceClassification, AutoModelForSeq2SeqLM, AutoModel
