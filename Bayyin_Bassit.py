@@ -186,10 +186,10 @@ def load_base_models():
     # --- AraBERT v2 (fine-tuned, has classification head) ---
     try:
         models['arabert_tokenizer'] = AutoTokenizer.from_pretrained(
-            "SarahAlhalees/AraBERTv2_RefinedBayyin", subfolder="Arabertv2_D3Tok"
+            "SarahAlhalees/AraBERTv2_RefinedBayyin"
         )
         models['arabert_model'] = AutoModelForSequenceClassification.from_pretrained(
-            "SarahAlhalees/AraBERTv2_RefinedBayyin", subfolder="Arabertv2_D3Tok"
+            "SarahAlhalees/AraBERTv2_RefinedBayyin"
         )
         models['arabert_model'].eval()
     except Exception as e:
