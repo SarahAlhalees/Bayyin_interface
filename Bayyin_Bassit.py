@@ -168,7 +168,9 @@ def load_base_models():
     Load the 3 base models for stacking.
 
     Stage 1 architecture (per paper):
-      Each base model = Transformer 
+      Each base model = Transformer + 2-layer BiLSTM + attention pooling
+                        + linguistic features → classification head (6 classes)
+
     Stage 2 meta-learner input (per paper):
       18-dim vector = concat of 6 softmax probs from each of the 3 base models.
       x = [p_AraBERT | p_CamelBERT-MSA | p_BiLSTM]  ∈ R^18
@@ -184,13 +186,28 @@ def load_base_models():
     models = {}
 
     # --- AraBERT v2 (fine-tuned, has classification head) ---
+    # AraBERT uses SentencePiece; use_fast=False avoids the fast-tokenizer
+    # conversion error when the sentencepiece wheel is not pre-installed.
     try:
-        models['arabert_tokenizer'] = AutoTokenizer.from_pretrained(
-            "SarahAlhalees/AraBERTv2_RefinedBayyin"
-        )
-        models['arabert_model'] = AutoModelForSequenceClassification.from_pretrained(
-            "SarahAlhalees/AraBERTv2_RefinedBayyin"
-        )
+        # Try flat repo layout first, then subfolder layout as fallback.
+        try:
+            models['arabert_tokenizer'] = AutoTokenizer.from_pretrained(
+                "SarahAlhalees/AraBERTv2_RefinedBayyin",
+                use_fast=False
+            )
+            models['arabert_model'] = AutoModelForSequenceClassification.from_pretrained(
+                "SarahAlhalees/AraBERTv2_RefinedBayyin"
+            )
+        except Exception:
+            models['arabert_tokenizer'] = AutoTokenizer.from_pretrained(
+                "SarahAlhalees/AraBERTv2_RefinedBayyin",
+                subfolder="Arabertv2_D3Tok",
+                use_fast=False
+            )
+            models['arabert_model'] = AutoModelForSequenceClassification.from_pretrained(
+                "SarahAlhalees/AraBERTv2_RefinedBayyin",
+                subfolder="Arabertv2_D3Tok"
+            )
         models['arabert_model'].eval()
     except Exception as e:
         st.warning(f"خطأ في تحميل AraBERT: {str(e)}")
@@ -198,9 +215,11 @@ def load_base_models():
         models['arabert_model'] = None
 
     # --- CamelBERT-MSA (fine-tuned, has classification head) ---
+    # CamelBERT also uses WordPiece / SentencePiece; use_fast=False is safe here.
     try:
         models['camelbert_tokenizer'] = AutoTokenizer.from_pretrained(
-            "SarahAlhalees/CamelBERTmsa_RefinedBayyin"
+            "SarahAlhalees/CamelBERTmsa_RefinedBayyin",
+            use_fast=False
         )
         models['camelbert_model'] = AutoModelForSequenceClassification.from_pretrained(
             "SarahAlhalees/CamelBERTmsa_RefinedBayyin"
@@ -221,8 +240,6 @@ def load_base_models():
             repo_id="SarahAlhalees/BiLSTM_RefinedBayyin",
             filename="meta_encoders.joblib"
         )
-        models['bilstm_model']   = joblib.load(bilstm_path)
-        models['meta_encoders']  = joblib.load(meta_enc_path)
 
         # best_bilstm_camelbert.joblib may be a dict containing the wrapper
         # and/or encoders. Unwrap gracefully.
@@ -243,7 +260,7 @@ def load_base_models():
                 st.warning(f"BiLSTM joblib keys: {list(bilstm_raw.keys())}")
         else:
             models['bilstm_model'] = bilstm_raw
- 
+
         # meta_encoders.joblib may also be a dict
         meta_raw = joblib.load(meta_enc_path)
         if isinstance(meta_raw, dict):
@@ -273,10 +290,11 @@ def load_base_models():
             models['meta_encoders'] = meta_raw
             models['meta_encoders_dict'] = None
 
-        # CamelBERT-MSA base (no classification head) — supplies token embeddings
-        # that meta_encoders then projects before passing to BiLSTMWrapper
+        # CamelBERT-MSA base (no classification head) — supplies CLS embeddings
+        # that meta_encoders projects before passing to BiLSTMWrapper.
         models['bilstm_tokenizer'] = AutoTokenizer.from_pretrained(
-            "CAMeL-Lab/bert-base-arabic-camelbert-msa"
+            "CAMeL-Lab/bert-base-arabic-camelbert-msa",
+            use_fast=False
         )
         models['bilstm_bert'] = AutoModel.from_pretrained(
             "CAMeL-Lab/bert-base-arabic-camelbert-msa"
@@ -284,10 +302,11 @@ def load_base_models():
         models['bilstm_bert'].eval()
     except Exception as e:
         st.warning(f"خطأ في تحميل BiLSTM: {str(e)}")
-        models['bilstm_model']     = None
-        models['bilstm_tokenizer'] = None
-        models['bilstm_bert']      = None
-        models['meta_encoders']    = None
+        models['bilstm_model']        = None
+        models['bilstm_tokenizer']    = None
+        models['bilstm_bert']         = None
+        models['meta_encoders']       = None
+        models['meta_encoders_dict']  = None
 
     return models
 
@@ -324,6 +343,21 @@ base_models = load_base_models()
 meta_learner = load_meta_learner()
 simplifier_tokenizer, simplifier_model = load_simplification_model()
 
+# --- Debug expander: shows joblib dict keys to help diagnose loading issues ---
+with st.expander("🔧 تشخيص تحميل النماذج", expanded=False):
+    bm = base_models.get('bilstm_model')
+    me = base_models.get('meta_encoders')
+    md = base_models.get('meta_encoders_dict')
+    st.write(f"**bilstm_model type:** `{type(bm)}`")
+    if isinstance(bm, dict):
+        st.write(f"**bilstm_model keys:** `{list(bm.keys())}`")
+    st.write(f"**meta_encoders type:** `{type(me)}`")
+    if isinstance(md, dict):
+        st.write(f"**meta_encoders_dict keys:** `{list(md.keys())}`")
+    st.write(f"**arabert loaded:** `{base_models.get('arabert_model') is not None}`")
+    st.write(f"**camelbert loaded:** `{base_models.get('camelbert_model') is not None}`")
+    st.write(f"**meta_learner loaded:** `{meta_learner is not None}`")
+
 # -----------------------------------------
 # Feature Extraction
 # -----------------------------------------
@@ -348,21 +382,21 @@ def get_softmax_probs_from_classifier(text, tokenizer, clf_model, max_length=256
 def get_bilstm_probs(text, models, max_length=256):
     """
     Get 6-class softmax probabilities from the BiLSTM+CamelBERT-MSA base model.
- 
+
     Pipeline (matches paper Stage 1 BiLSTM branch):
       1. Tokenise with CamelBERT-MSA tokenizer.
       2. Extract CLS token embedding from the CamelBERT-MSA base model.
       3. Apply meta_encoders (sklearn scaler / PCA / pipeline) to project the
          CLS embedding into the space the BiLSTMWrapper was trained on.
       4. Call BiLSTMWrapper.predict_proba() → (1, 6) softmax probs.
- 
+
     Shape returned: (1, 6)
     """
     tokenizer  = models['bilstm_tokenizer']
     bert_model = models['bilstm_bert']
     bilstm     = models['bilstm_model']
     meta_enc   = models['meta_encoders']
- 
+
     # Safety check — if loading produced a dict instead of a wrapper, try to
     # extract the predict_proba-capable object one more time at inference time.
     if isinstance(bilstm, dict):
@@ -386,7 +420,7 @@ def get_bilstm_probs(text, models, max_length=256):
             f"bilstm_model type={type(models['bilstm_model'])}, "
             f"meta_encoders_dict keys={list((models.get('meta_encoders_dict') or {}).keys())}"
         )
- 
+
     # Step 1 & 2 — CLS embedding
     inputs = tokenizer(
         text,
@@ -398,7 +432,7 @@ def get_bilstm_probs(text, models, max_length=256):
     with torch.no_grad():
         outputs = bert_model(**inputs)
     cls_emb = outputs.last_hidden_state[:, 0, :].numpy()   # (1, hidden_size)
- 
+
     # Step 3 — encode / project via meta_encoders if available
     if meta_enc is not None:
         if hasattr(meta_enc, 'transform'):
@@ -407,11 +441,10 @@ def get_bilstm_probs(text, models, max_length=256):
             for enc in meta_enc:
                 if hasattr(enc, 'transform'):
                     cls_emb = enc.transform(cls_emb)
- 
+
     # Step 4 — BiLSTM softmax probs
     probs = bilstm.predict_proba(cls_emb)   # (1, 6)
     return probs
- 
 
 
 def get_model_probabilities(text, models):
