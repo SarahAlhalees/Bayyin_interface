@@ -1,10 +1,11 @@
 streamlit
 transformers
 torch
-torchvision
 numpy
 sentencepiece
 safetensors
 joblib
 huggingface-hub
 scikit-learn
+
+
